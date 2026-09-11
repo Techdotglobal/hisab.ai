@@ -236,6 +236,19 @@ export async function processImport(
         recordStage='native_create'
         const created = await measure('native_create',()=>input.module.createRecord(record, input.ctx))
         createdId = created.id
+        if (created.archiveOnly) {
+          // The module intentionally produced no native row (e.g. every line of a
+          // QuickBooks InventoryAdjustment was a zero-quantity no-op) and already
+          // recorded why via a NATIVE_MATERIALIZATION_BLOCKED / LOSSLESS_ARCHIVE_ONLY
+          // warning. `created.id` is the archive row's id, not a native id — there
+          // is nothing to link, so source-link verification does not apply here.
+          // This is an expected skip, never an import failure.
+          recordStage='source_link_archive'
+          await measure('source_link_archive',()=>archive(row.mapped))
+          skippedCount += 1
+          skippedRecords.push(diagnostic(row, 'unsupported_type'))
+          continue
+        }
         recordStage='source_link_verification'
         await measure('source_link_archive',()=>archive(row.mapped, created.id))
         await measure('source_link_verification',()=>assertQuickBooksRecordLinked(input.ctx.companyId,row.mapped,created.id))

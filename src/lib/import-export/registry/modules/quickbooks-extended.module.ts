@@ -406,7 +406,13 @@ function moduleFor(config: ExtendedConfig): ModuleDefinition {
         await materializeQuickBooksCustomFields({ companyId:ctx.companyId, entityType:local.table, entityId:local.id, row })
       }
       else await recordQuickBooksWarning({ companyId:ctx.companyId, realmId, resourceKey:config.key, sourceId, code:config.materialize?'NATIVE_MATERIALIZATION_BLOCKED':'LOSSLESS_ARCHIVE_ONLY', message:config.materialize?`${config.displayName} could not be materialized because a required native relationship or account is missing.`:`${config.displayName} was preserved losslessly but requires an existing posting-safe product workflow before materialization.`, details:{ entityType:config.entityType } })
-      return { id: local?.id ?? String(archived.id) }
+      // `local` is null for two distinct, both-legitimate reasons: the module has
+      // no materializer at all (LOSSLESS_ARCHIVE_ONLY), or its materializer ran
+      // and found nothing that warrants a native row (NATIVE_MATERIALIZATION_BLOCKED —
+      // e.g. every line of a QuickBooks InventoryAdjustment was a zero-quantity
+      // no-op). Either way there is no native id to link, so the caller must
+      // treat this as an intentional skip, not a failed native creation.
+      return { id: local?.id ?? String(archived.id), archiveOnly: !local }
     },
     async updateRecord(_id, row, ctx) { await this.createRecord!(row, ctx) },
     async exportRecords(_filters, ctx) {

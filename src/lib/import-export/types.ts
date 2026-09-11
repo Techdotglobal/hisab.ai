@@ -70,7 +70,16 @@ export interface ModuleDefinition {
     templateId: string,
   ) => Record<string, unknown>
   findDuplicate: (record: Record<string, unknown>, ctx: ImportContext) => Promise<{ id: string; matchedOn: string[] } | null>
-  createRecord: (record: Record<string, unknown>, ctx: ImportContext) => Promise<{ id: string }>
+  /**
+   * `archiveOnly: true` signals that the source row was preserved (archived)
+   * but intentionally has no native counterpart — e.g. a QuickBooks extended
+   * entity whose materialization was legitimately skipped (already recorded as
+   * a warning by the module itself). `id` in that case is the archive row's id,
+   * not a native record id. Callers must treat this as a skip, never as a
+   * successful native materialization, and must not run source-link
+   * verification against it.
+   */
+  createRecord: (record: Record<string, unknown>, ctx: ImportContext) => Promise<{ id: string; archiveOnly?: boolean }>
   updateRecord: (id: string, record: Record<string, unknown>, ctx: ImportContext) => Promise<void>
   /** Compensates a failed create before it can be reported as imported. */
   rollbackCreatedRecord?: (id: string, ctx: ImportContext) => Promise<void>
