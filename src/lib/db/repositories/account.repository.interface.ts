@@ -8,6 +8,7 @@ export interface AccountListOptions {
 export interface AccountBatchDuplicateInput {
   rowNumber: number
   accountNo?: string | null
+  sourceId?: string | null
 }
 
 export interface AccountBatchDuplicateMatch {
@@ -18,6 +19,7 @@ export interface AccountBatchDuplicateMatch {
 
 export interface AccountDuplicateCriteria {
   accountNo?: string | null
+  sourceId?: string | null
 }
 
 export interface AccountCreateInput {
@@ -29,6 +31,7 @@ export interface AccountCreateInput {
   subType: string
   description?: string | null
   isActive?: boolean
+  legacyId?: string | null
 }
 
 export interface AccountUpdateInput {
@@ -39,6 +42,7 @@ export interface AccountUpdateInput {
   subType?: string
   description?: string | null
   isActive?: boolean
+  legacyId?: string | null
 }
 
 export interface AccountRepository {

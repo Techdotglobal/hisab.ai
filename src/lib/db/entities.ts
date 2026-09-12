@@ -55,6 +55,7 @@ export interface ChartOfAccountRecord {
   isActive: boolean
   description: string | null
   balance: number
+  legacyId: string | null
   createdAt: Date
   updatedAt: Date
 }

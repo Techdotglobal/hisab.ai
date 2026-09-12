@@ -54,7 +54,24 @@ export const supabaseAccountRepository: AccountRepository = {
   async findDuplicate(criteria: AccountDuplicateCriteria) {
     const db = supabaseDb()
     const companyId = await resolveCompanyId()
+    const sourceId = criteria.sourceId?.trim()
     const accountNo = criteria.accountNo?.trim()
+
+    if (sourceId) {
+      const { data, error } = await db
+        .from('chart_of_accounts')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('legacy_id', sourceId)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      // QuickBooks-sourced rows never fall back to accountNo matching: a reused/collided
+      // account number must not merge a new QBO identity into an unrelated existing row.
+      return data ? mapChartOfAccountRow(data) : null
+    }
+
     if (!accountNo) return null
 
     const { data, error } = await db
@@ -75,7 +92,23 @@ export const supabaseAccountRepository: AccountRepository = {
 
     const db = supabaseDb()
     const companyId = await resolveCompanyId()
+    const sourceIds = [...new Set(inputs.map((item) => item.sourceId?.trim()).filter(Boolean) as string[])]
     const accountNos = [...new Set(inputs.map((item) => item.accountNo?.trim()).filter(Boolean) as string[])]
+
+    const byLegacyId = new Map<string, ChartOfAccountRecord>()
+    if (sourceIds.length > 0) {
+      const { data, error } = await db
+        .from('chart_of_accounts')
+        .select('*')
+        .eq('company_id', companyId)
+        .in('legacy_id', sourceIds)
+        .is('deleted_at', null)
+      if (error) throw error
+      for (const row of data ?? []) {
+        const account = mapChartOfAccountRow(row)
+        if (account.legacyId) byLegacyId.set(account.legacyId, account)
+      }
+    }
 
     const byAccountNo = new Map<string, ChartOfAccountRecord>()
     if (accountNos.length > 0) {
@@ -94,8 +127,20 @@ export const supabaseAccountRepository: AccountRepository = {
 
     const matches: AccountBatchDuplicateMatch[] = []
     for (const input of inputs) {
+      const sourceId = input.sourceId?.trim()
       const accountNo = input.accountNo?.trim()
-      if (accountNo && byAccountNo.has(accountNo)) {
+      if (sourceId && byLegacyId.has(sourceId)) {
+        matches.push({
+          rowNumber: input.rowNumber,
+          existingId: byLegacyId.get(sourceId)!.id,
+          matchedOn: ['sourceId'],
+        })
+        continue
+      }
+      // QuickBooks-sourced rows (sourceId present) never fall back to accountNo matching:
+      // a reused/collided account number must not merge a new QBO identity into an
+      // unrelated existing row. accountNo fallback is reserved for non-QuickBooks (CSV) imports.
+      if (!sourceId && accountNo && byAccountNo.has(accountNo)) {
         matches.push({
           rowNumber: input.rowNumber,
           existingId: byAccountNo.get(accountNo)!.id,
@@ -126,6 +171,7 @@ export const supabaseAccountRepository: AccountRepository = {
         normal_balance: normalBalance,
         description: input.description ?? null,
         is_active: input.isActive ?? true,
+        legacy_id: input.legacyId ?? null,
       })
       .select('*')
       .single()
@@ -153,6 +199,7 @@ export const supabaseAccountRepository: AccountRepository = {
     if (input.subType !== undefined) patch.sub_type = input.subType
     if (input.description !== undefined) patch.description = input.description
     if (input.isActive !== undefined) patch.is_active = input.isActive
+    if (input.legacyId !== undefined) patch.legacy_id = input.legacyId
 
     const { data, error } = await db
       .from('chart_of_accounts')

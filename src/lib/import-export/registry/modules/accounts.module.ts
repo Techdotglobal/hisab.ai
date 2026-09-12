@@ -26,6 +26,9 @@ function parseAccountImportRow(mapped: Record<string, unknown>) {
     subType: String(mapped.subType ?? '').trim(),
     description: parseOptionalString(mapped.description),
     isActive: parseBooleanField(mapped.isActive, true),
+    // Present only for QuickBooks-sourced rows (normalizeRecords sets `sourceId` on every
+    // resource). Non-QuickBooks CSV imports have no sourceId and fall back to accountNo matching.
+    sourceId: parseOptionalString(mapped.sourceId),
   }
 }
 
@@ -52,16 +55,16 @@ export const accountsModule: ModuleDefinition = {
 
   async findDuplicate(record) {
     const parsed = parseAccountImportRow(record)
-    const existing = await getAccountRepository().findDuplicate({ accountNo: parsed.accountNo })
+    const existing = await getAccountRepository().findDuplicate({ accountNo: parsed.accountNo, sourceId: parsed.sourceId })
     if (!existing) return null
-    return { id: existing.id, matchedOn: ['accountNo'] }
+    return { id: existing.id, matchedOn: parsed.sourceId && existing.legacyId === parsed.sourceId ? ['sourceId'] : ['accountNo'] }
   },
 
   async findDuplicatesBatch(rows: MappedRow[]) {
     const repo = getAccountRepository()
     const inputs = rows.map((row) => {
       const parsed = parseAccountImportRow(row.mapped)
-      return { rowNumber: row.rowNumber, accountNo: parsed.accountNo }
+      return { rowNumber: row.rowNumber, accountNo: parsed.accountNo, sourceId: parsed.sourceId }
     })
     const matches = await repo.findDuplicatesBatch(inputs)
     return matches.map((match): DuplicateMatch => ({
@@ -73,14 +76,17 @@ export const accountsModule: ModuleDefinition = {
 
   async createRecord(record) {
     const parsed = parseAccountImportRow(record)
-    const created = await getAccountRepository().create(parsed)
+    const { sourceId, ...create } = parsed
+    const created = await getAccountRepository().create({ ...create, legacyId: sourceId })
     return { id: created.id }
   },
 
   async updateRecord(id, record) {
     const parsed = parseAccountImportRow(record)
-    const { accountNo: _accountNo, ...update } = parsed
-    await getAccountRepository().update(id, update)
+    const { accountNo: _accountNo, sourceId, ...update } = parsed
+    // Only touch legacy_id when this row carries a QuickBooks sourceId — never null it out
+    // on a plain CSV re-import of an account that was originally linked to QuickBooks.
+    await getAccountRepository().update(id, sourceId ? { ...update, legacyId: sourceId } : update)
   },
 
   async exportRecords(filters) {

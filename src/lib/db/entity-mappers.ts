@@ -74,6 +74,7 @@ export function mapChartOfAccountRow(row: Record<string, unknown>): ChartOfAccou
     isActive: Boolean(row.is_active ?? true),
     description: (row.description as string | null) ?? null,
     balance: toNumber(row.balance),
+    legacyId: (row.legacy_id as string | null) ?? null,
     createdAt: requireDate(String(row.created_at)),
     updatedAt: requireDate(String(row.updated_at)),
   }
