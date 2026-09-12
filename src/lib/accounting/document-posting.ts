@@ -6,7 +6,7 @@ import { getExchangeRateAtDate } from '@/lib/currency/exchange-rates'
 import { computeRealizedFxDifference } from '@/lib/currency/fx-conversion'
 import { postGoodsReceiptFromBill, postGoodsIssueFromInvoice, postGoodsIssueFromSalesReceipt, postGoodsReturnFromCreditNote, postGoodsReturnToVendorFromCredit } from '@/lib/inventory/document-hooks'
 import { buildTaxJournalLines } from '@/lib/tax/journal-posting'
-import { findSystemAccount, postSourceDocumentToLedger } from './posting-service'
+import { findSystemAccount, findSystemAccountByNameCandidates, postSourceDocumentToLedger } from './posting-service'
 import type { PostingLine } from './posting-service'
 
 function roundMoney(v: number) { return Math.round(v * 10000) / 10000 }
@@ -15,8 +15,8 @@ async function getAccountIds(companyId: string) {
   const ar = await findSystemAccount(companyId, { nameContains: 'Receivable', canonicalType: 'Asset' })
   const ap = await findSystemAccount(companyId, { nameContains: 'Payable', canonicalType: 'Liability' })
   const revenue = await findSystemAccount(companyId, { accountNoPrefix: '41', canonicalType: 'Income' })
-  const vatPayable = await findSystemAccount(companyId, { nameContains: 'VAT Payable' })
-  const vatReceivable = await findSystemAccount(companyId, { nameContains: 'VAT Receivable' })
+  const vatPayable = await findSystemAccountByNameCandidates(companyId, ['VAT Payable', 'Output VAT', 'Sales Tax Payable'], { canonicalType: 'Liability' })
+  const vatReceivable = await findSystemAccountByNameCandidates(companyId, ['VAT Receivable', 'Input VAT', 'Input Tax'], { canonicalType: 'Asset' })
   const bank = await findSystemAccount(companyId, { accountNoPrefix: '11-1101' })
   const expense = await findSystemAccount(companyId, { accountNoPrefix: '61' })
   const salaries = await findSystemAccount(companyId, { nameContains: 'Salaries' })
@@ -173,7 +173,21 @@ export async function postBillToLedger(billId: string, companyId?: string, sourc
     for (const line of purchaseLines) {
       const accountId = line.account_id ? String(line.account_id) : expenseAccount
       if (!accountId) continue
-      lines.push({ accountId, debit:Number(line.amount), description:String(line.description ?? `Bill ${bill.bill_no}`), costCenterId:line.cost_center_id ? String(line.cost_center_id) : null, exchangeRateOverride:exchangeRate })
+      // A QuickBooks bill can carry an in-document reduction line (e.g. a
+      // negative AccountBasedExpenseLineDetail amount) against the same
+      // account. `bill_lines.amount` stores the magnitude (non-negative
+      // constraint); `is_reduction` records that it posts as a credit
+      // (reducing the account) rather than a debit, so the entry still
+      // balances against the QuickBooks-reported (already-net) bill total.
+      const isReduction = Boolean(line.is_reduction)
+      lines.push({
+        accountId,
+        debit: isReduction ? undefined : Number(line.amount),
+        credit: isReduction ? Number(line.amount) : undefined,
+        description: String(line.description ?? `Bill ${bill.bill_no}`),
+        costCenterId: line.cost_center_id ? String(line.cost_center_id) : null,
+        exchangeRateOverride: exchangeRate,
+      })
     }
   } else if (expenseAccount && subtotal > 0) {
     lines.push({ accountId:expenseAccount, debit:subtotal, description:`Bill ${bill.bill_no}`, exchangeRateOverride:exchangeRate })

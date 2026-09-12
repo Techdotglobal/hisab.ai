@@ -247,3 +247,31 @@ export async function findSystemAccount(
   if (error) throw error
   return data ? String(data.id) : null
 }
+
+/**
+ * Resolves a system account against a company's actual chart of accounts by
+ * trying several plausible name fragments in priority order.
+ *
+ * QuickBooks Online's "Automated Sales Tax" (the model every modern QBO
+ * company — including migrated ones — uses) does not expose the underlying
+ * GL accounts through its API at all; Intuit posts tax internally. There is
+ * no immutable QuickBooks identity (unlike accounts/customers/vendors) that
+ * can name "the input VAT account" for a migrated company, so which native
+ * account plays that role is inherently a destination-side naming
+ * convention, not something a source-id lookup can resolve. A single literal
+ * name (e.g. exactly "VAT Receivable") is too rigid for real charts of
+ * accounts that use a company's own historical naming — this tries a
+ * priority-ordered list of the naming conventions actually seen in practice
+ * (hisab.ai's own default COA, and common QuickBooks-migrated phrasing).
+ */
+export async function findSystemAccountByNameCandidates(
+  companyId: string,
+  candidates: string[],
+  matchers: { canonicalType?: string } = {},
+): Promise<string | null> {
+  for (const nameContains of candidates) {
+    const found = await findSystemAccount(companyId, { nameContains, ...matchers })
+    if (found) return found
+  }
+  return null
+}
