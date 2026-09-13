@@ -19,6 +19,14 @@ export const PROTECTED_MIGRATION_FIELDS = new Set([
   '_deleted',
   '_hisabAttachment',
   'SyncToken',
+  // The QuickBooks source identity (used for legacy_id/sourceId-first duplicate
+  // matching, e.g. accounts.module.ts) is not declared in every module's field
+  // list (accounts.fields.ts has none), so without this it is silently dropped
+  // here before duplicate detection ever sees it, forcing a fallback to mutable
+  // fields like accountNo — which QuickBooks can legitimately reuse after an
+  // account is deleted, causing two different QuickBooks records to collide
+  // onto one native row.
+  'sourceId',
 ])
 
 export function isProtectedMigrationField(key: string): boolean {
