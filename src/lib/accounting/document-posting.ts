@@ -379,7 +379,21 @@ export async function postExpenseToLedger(expenseId: string, companyId?: string,
     for (const line of expenseLines) {
       const accountId = line.account_id ? String(line.account_id) : expenseAccount
       if (!accountId) continue
-      lines.push({ accountId, debit:Number(line.amount), description:String(line.description ?? `Expense ${expense.expense_no}`), costCenterId:line.cost_center_id ? String(line.cost_center_id) : null, exchangeRateOverride:exchangeRate })
+      // A QuickBooks expense can carry an in-document reduction line (e.g. a
+      // negative AccountBasedExpenseLineDetail amount) against the same
+      // account. `expense_lines.amount` stores the magnitude (non-negative
+      // constraint); `is_reduction` records that it posts as a credit
+      // (reducing the account) rather than a debit, so the entry still
+      // balances against the QuickBooks-reported (already-net) expense total.
+      const isReduction = Boolean(line.is_reduction)
+      lines.push({
+        accountId,
+        debit: isReduction ? undefined : Number(line.amount),
+        credit: isReduction ? Number(line.amount) : undefined,
+        description: String(line.description ?? `Expense ${expense.expense_no}`),
+        costCenterId: line.cost_center_id ? String(line.cost_center_id) : null,
+        exchangeRateOverride: exchangeRate,
+      })
     }
   } else if (expenseAccount && subtotal > 0) {
     lines.push({ accountId:expenseAccount, debit:subtotal, description:`Expense ${expense.expense_no}`, exchangeRateOverride:exchangeRate })

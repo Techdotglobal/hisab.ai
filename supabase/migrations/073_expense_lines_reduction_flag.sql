@@ -1,0 +1,11 @@
+-- QuickBooks expenses can carry a negative AccountBasedExpenseLineDetail line —
+-- an in-document reduction against the same account (e.g. NETKOM Expenses
+-- 3258, 2863, 3637). `expense_lines.amount` is constrained non-negative
+-- (expense_lines_amount_nonneg_chk, 010_database_hardening.sql), so the
+-- reducing line's magnitude is stored positive and this flag records that it
+-- posts as a credit (reduction) rather than a debit, preserving the original
+-- accounting direction instead of silently flipping it into a larger debit.
+-- Mirrors bill_lines.is_reduction (072_bill_lines_reduction_flag.sql). Unlike
+-- bill_lines, expense_lines has no unit_price column, so no companion field
+-- is needed here.
+ALTER TABLE public.expense_lines ADD COLUMN IF NOT EXISTS is_reduction BOOLEAN NOT NULL DEFAULT false;

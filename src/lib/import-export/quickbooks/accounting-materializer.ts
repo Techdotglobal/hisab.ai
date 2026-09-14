@@ -42,9 +42,10 @@ function text(value:unknown) { return value === null || value === undefined ? ''
 
 function requiresLedgerFor(config: (typeof CONFIG)[string], moduleKey:string, sourceRow:Row) {
   if (!config.requiresLedger) return false
-  // QuickBooks permits zero-value journal documents. They carry history and
-  // metadata but have no accounting movement to post.
-  if (moduleKey === 'journal-entries') {
+  // QuickBooks permits zero-value journal documents and expenses. They carry
+  // history and metadata but have no accounting movement to post (e.g. NETKOM
+  // Expense 3966: total=0, every line Amount=0).
+  if (moduleKey === 'journal-entries' || moduleKey === 'expenses') {
     const total = Number(sourceRow.total ?? sourceRow.amount ?? 0)
     if (Number.isFinite(total) && Math.abs(total) < 0.0001) return false
   }
@@ -123,7 +124,11 @@ export async function materializeQuickBooksAccounting(input:{ companyId:string; 
     const ledgerEntryCount = ledger.data?.length ?? 0
     const inventoryMovementCount = inventory.data?.length ?? 0
     if (requiresLedger && ledgerEntryCount < 2&&!creditOnlyApplication) {
-      const document=await db.from(config.table).select('status,total,subtotal,tax_amount').eq('company_id',input.companyId).eq('id',input.localId).maybeSingle()
+      // Not every tracked table has the same diagnostic columns (e.g. `expenses`
+      // has no `subtotal`, `payments`/`journal_entries` have neither `total` nor
+      // `subtotal`) — select('*') so this diagnostic can never itself crash with
+      // "column does not exist" and mask the real "unbalanced ledger" error.
+      const document=await db.from(config.table).select('*').eq('company_id',input.companyId).eq('id',input.localId).maybeSingle()
       if(document.error)throw document.error
       const snapshot=document.data as Record<string,unknown>|null
       throw new Error(`Native ${input.moduleKey} posting did not produce a balanced ledger entry (ledgerEntries=${ledgerEntryCount}, status=${text(snapshot?.status)||'unknown'}, total=${text(snapshot?.total)||'unknown'}, subtotal=${text(snapshot?.subtotal)||'unknown'}, tax=${text(snapshot?.tax_amount)||'unknown'}).`)
