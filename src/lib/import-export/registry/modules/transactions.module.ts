@@ -159,7 +159,14 @@ function makeModule(c: Config): ModuleDefinition {
     parseImportRow: (m) => parseRow(m),
     async findDuplicate(record, ctx) {
       const r = parseRow(record); const client = createAdminClient()
-      if (c.legacy && r.sourceId) { const { data } = await client.from(c.table).select('id').eq('company_id',ctx.companyId).eq('legacy_id',r.sourceId).is('deleted_at',null).limit(1).maybeSingle(); if (data) return {id:data.id,matchedOn:['sourceId']} }
+      // A QuickBooks-sourced row (sourceId present) never falls back to
+      // transactionNo/DocNumber matching: QBO does not guarantee DocNumber is
+      // unique for Purchase/Expense transactions (e.g. NETKOM 4308 vs 4389,
+      // 4295 vs 4387 shared a DocNumber but were different documents), so a
+      // collision must not merge a genuinely new document into an unrelated
+      // existing one. transactionNo remains the only signal for non-QuickBooks
+      // (CSV) rows, which carry no authoritative sourceId at all.
+      if (c.legacy && r.sourceId) { const { data } = await client.from(c.table).select('id').eq('company_id',ctx.companyId).eq('legacy_id',r.sourceId).is('deleted_at',null).limit(1).maybeSingle(); return data ? {id:data.id,matchedOn:['sourceId']} : null }
       const { data } = await client.from(c.table).select('id').eq('company_id',ctx.companyId).eq(c.numberColumn,r.transactionNo).is('deleted_at',null).limit(1).maybeSingle()
       return data ? {id:data.id,matchedOn:['transactionNo']} : null
     },
@@ -179,7 +186,10 @@ function makeModule(c: Config): ModuleDefinition {
       const bySource=new Map((sourceMatches.data??[]).map(item=>[String(item.legacy_id),String(item.id)]))
       const byNumber=new Map((numberMatches.data??[]).map(item=>[String(item[c.numberColumn]),String(item.id)]))
       const matches:DuplicateMatch[]=[]
-      for(const item of parsed){const sourceId=item.record.sourceId?bySource.get(item.record.sourceId):undefined,numberId=byNumber.get(item.record.transactionNo),existingId=sourceId??numberId;if(existingId)matches.push({rowNumber:item.rowNumber,existingId,matchedOn:sourceId?['sourceId']:['transactionNo']})}
+      // Same rule as findDuplicate above: a row carrying a QuickBooks sourceId
+      // never consults transactionNo/DocNumber, matched or not — only rows
+      // with no sourceId at all (non-QuickBooks CSV imports) use it.
+      for(const item of parsed){const sourceId=item.record.sourceId?bySource.get(item.record.sourceId):undefined;const numberId=!item.record.sourceId?byNumber.get(item.record.transactionNo):undefined;const existingId=sourceId??numberId;if(existingId)matches.push({rowNumber:item.rowNumber,existingId,matchedOn:sourceId?['sourceId']:['transactionNo']})}
       return matches
     },
     async createRecord(record, ctx) {
