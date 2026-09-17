@@ -42,10 +42,11 @@ function text(value:unknown) { return value === null || value === undefined ? ''
 
 function requiresLedgerFor(config: (typeof CONFIG)[string], moduleKey:string, sourceRow:Row) {
   if (!config.requiresLedger) return false
-  // QuickBooks permits zero-value journal documents and expenses. They carry
-  // history and metadata but have no accounting movement to post (e.g. NETKOM
-  // Expense 3966: total=0, every line Amount=0).
-  if (moduleKey === 'journal-entries' || moduleKey === 'expenses') {
+  // QuickBooks permits zero-value journal documents, expenses, and invoices.
+  // They carry history and metadata but have no accounting movement to post
+  // (e.g. NETKOM Expense 3966: total=0, every line Amount=0; NETKOM Invoices
+  // 1166/1168: PAID, total=0, subtotal=0, tax=0).
+  if (moduleKey === 'journal-entries' || moduleKey === 'expenses' || moduleKey === 'invoices') {
     const total = Number(sourceRow.total ?? sourceRow.amount ?? 0)
     if (Number.isFinite(total) && Math.abs(total) < 0.0001) return false
   }
