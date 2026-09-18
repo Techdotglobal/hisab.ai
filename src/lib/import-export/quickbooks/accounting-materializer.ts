@@ -87,7 +87,7 @@ export async function assertQuickBooksAccountingCompleted(moduleKey:string,compa
   if(requiresLedgerFor(config,moduleKey,sourceRow)&&Number(result.data.ledger_entry_count)<2&&!Boolean(validation.creditOnlyApplication))throw new Error(`QuickBooks ${moduleKey} materialization completed without a balanced ledger posting.`)
 }
 
-export async function materializeQuickBooksAccounting(input:{ companyId:string; userId:string; moduleKey:string; localId:string; sourceRow:Row }) {
+async function materializeQuickBooksAccountingImpl(input:{ companyId:string; userId:string; moduleKey:string; localId:string; sourceRow:Row }, forceReattempt:boolean) {
   const config = CONFIG[input.moduleKey]
   if (!config) return { status:'manual_required' as const, ledgerEntryCount:0, inventoryMovementCount:0 }
   const realmId = text(input.sourceRow._realmId)
@@ -98,7 +98,29 @@ export async function materializeQuickBooksAccounting(input:{ companyId:string; 
   const existing = await db.from('quickbooks_materialization_runs').select('*').eq('company_id',input.companyId).eq('realm_id',realmId).eq('entity_type',entityType).eq('source_id',sourceId).eq('module_key',input.moduleKey).maybeSingle()
   if (existing.error) throw existing.error
   if (existing.data?.status === 'completed' && existing.data.local_id === input.localId) {
-    return { status:'completed' as const, ledgerEntryCount:Number(existing.data.ledger_entry_count), inventoryMovementCount:Number(existing.data.inventory_movement_count) }
+    if (!forceReattempt) {
+      return { status:'completed' as const, ledgerEntryCount:Number(existing.data.ledger_entry_count), inventoryMovementCount:Number(existing.data.inventory_movement_count) }
+    }
+    // Force path (e.g. re-materializing a document whose prior "completed" run
+    // predates a total-computation fix): only ever allowed when there is
+    // provably zero existing ledger impact, checked twice — the cached count
+    // on the run row AND a direct read of ledger_entries — so this can never
+    // duplicate a real posting. A completed run with any ledger entries at all
+    // is refused outright and execution never reaches config.post below.
+    const cachedLedgerCount = Number(existing.data.ledger_entry_count ?? 0)
+    if (cachedLedgerCount > 0) {
+      throw new Error(`Refusing to force-rematerialize ${input.moduleKey} ${sourceId}: its materialization run already recorded ${cachedLedgerCount} ledger entries.`)
+    }
+    if (requiresLedgerFor(config,input.moduleKey,input.sourceRow)) {
+      let realLedgerQuery = db.from('ledger_entries').select('id').eq('company_id',input.companyId).eq('source_id',input.localId)
+      if (input.moduleKey !== 'sales-receipts') realLedgerQuery = realLedgerQuery.eq('source_type',config.sourceType)
+      const realLedgerCheck = await realLedgerQuery.limit(1)
+      if (realLedgerCheck.error) throw realLedgerCheck.error
+      if ((realLedgerCheck.data?.length ?? 0) > 0) {
+        throw new Error(`Refusing to force-rematerialize ${input.moduleKey} ${sourceId}: ledger_entries already contains a posting for local id ${input.localId}.`)
+      }
+    }
+    // Falls through to the normal posting flow below — nothing else changes.
   }
   if (config.manualReason) {
     const manual = await db.from('quickbooks_materialization_runs').upsert({ company_id:input.companyId, realm_id:realmId, entity_type:entityType, source_id:sourceId, module_key:input.moduleKey, local_table:config.table, local_id:input.localId, status:'manual_required', attempt_count:Number(existing.data?.attempt_count ?? 0), validation:{ sourceId, reason:config.manualReason }, last_error:config.manualReason, updated_at:new Date().toISOString() }, { onConflict:'company_id,realm_id,entity_type,source_id,module_key' })
@@ -143,6 +165,29 @@ export async function materializeQuickBooksAccounting(input:{ companyId:string; 
     await db.from('quickbooks_materialization_runs').update({ status:'failed', last_error:error instanceof Error ? error.message : String(error), updated_at:new Date().toISOString() }).eq('company_id',input.companyId).eq('realm_id',realmId).eq('entity_type',entityType).eq('source_id',sourceId).eq('module_key',input.moduleKey)
     throw error
   }
+}
+
+export async function materializeQuickBooksAccounting(input:{ companyId:string; userId:string; moduleKey:string; localId:string; sourceRow:Row }) {
+  return materializeQuickBooksAccountingImpl(input, false)
+}
+
+/**
+ * Re-runs materialization for a document already marked `completed`, for the
+ * narrow case where that prior completion is known to predate a bug fix and
+ * therefore may not reflect a real posting (e.g. NETKOM Journal Entries whose
+ * `total` was miscomputed as 0, so `postQuickBooksJournal` never ran).
+ *
+ * Never bypasses safety: refused outright (before any posting attempt) if the
+ * existing run already recorded ledger entries, or if `ledger_entries` itself
+ * already has a row for this document — checked directly, not just via the
+ * cached count — so calling this twice, or calling it on a document that was
+ * already correctly posted, can never create a duplicate posting. Every other
+ * safeguard (balance validation, account resolution, diagnostic-on-failure)
+ * is identical to the normal path — this only lifts the "already completed"
+ * short-circuit, and only when zero ledger impact is proven first.
+ */
+export async function forceRematerializeQuickBooksAccounting(input:{ companyId:string; userId:string; moduleKey:string; localId:string; sourceRow:Row }) {
+  return materializeQuickBooksAccountingImpl(input, true)
 }
 
 export async function markQuickBooksMaterializationConflict(input:{ companyId:string; moduleKey:string; localId:string; sourceRow:Row; message:string }) {
