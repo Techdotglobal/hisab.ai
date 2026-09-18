@@ -491,7 +491,12 @@ function normalizeTransaction(resourceKey: string, row: JsonRecord): Record<stri
     }
   })
   const journalTotal = resourceKey === 'journal-entries' ? lines.reduce((sum,line)=>sum+Number(line.debit||0),0) : 0
-  const total = value(row.TotalAmt ?? row.Amount ?? journalTotal)
+  // QuickBooks Journal Entries report TotalAmt as a literal 0 (it has no real
+  // meaning for this entity), so `row.TotalAmt ?? journalTotal` never reached
+  // journalTotal — 0 is not nullish. This silently made every journal entry
+  // look zero-value to requiresLedgerFor()'s exemption, regardless of its
+  // actual debit/credit lines, so postQuickBooksJournal never ran.
+  const total = resourceKey === 'journal-entries' ? value(journalTotal) : value(row.TotalAmt ?? row.Amount ?? journalTotal)
   const transactionTax = value(object(row.TxnTaxDetail).TotalTax ?? 0)
   const paymentKind = resourceKey === 'customer-payments' ? 'CUSTOMER' : resourceKey === 'vendor-payments' ? 'VENDOR' : null
   const paymentRelationships = paymentKind ? extractQuickBooksPaymentRelationships(row,paymentKind) : null
