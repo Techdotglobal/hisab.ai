@@ -225,7 +225,9 @@ function makeModule(c: Config): ModuleDefinition {
       const header:any={company_id:ctx.companyId,[c.numberColumn]:safeNumber,date:r.date}
       if (!['customerPayment','vendorPayment'].includes(c.kind)) header.status=r.status ?? 'OPEN'
       if (['salesReceipt','purchaseOrder','vendorCredit','estimate'].includes(c.kind)) Object.assign(header,{currency:r.currency,subtotal:r.subtotal,tax_amount:r.taxAmount,total:r.total,notes:r.description,exchange_rate:r.exchangeRate,base_total:r.homeTotal})
-      if (c.kind==='bill') Object.assign(header,{subtotal:r.subtotal,tax_amount:r.taxAmount,total:r.total,notes:r.description,exchange_rate:r.exchangeRate,base_total:r.homeTotal})
+      // A new bill has no payment allocations yet, so it is fully open. The DB defaults balance/amount_paid to 0 and only an
+      // allocation refresh corrects them, which left imported bills that never receive an allocation invisible to AP aging.
+      if (c.kind==='bill') Object.assign(header,{subtotal:r.subtotal,tax_amount:r.taxAmount,total:r.total,amount_paid:0,balance:r.total,notes:r.description,exchange_rate:r.exchangeRate,base_total:r.homeTotal})
       if(c.kind==='vendorCredit'){const ap=r.apAccountSourceId&&realmId?await resolveQuickBooksLocalId(ctx.companyId,realmId,r.apAccountSourceId,['Account'],['chart_of_accounts']):null;if(r.apAccountSourceId&&!ap)throw new Error(`QuickBooks A/P account ${r.apAccountSourceId} must be migrated before Vendor Credit ${r.sourceId}.`);Object.assign(header,{reference:r.reference,ap_account_id:ap?.id??null,base_subtotal:r.subtotal*r.exchangeRate,base_tax_amount:r.taxAmount*r.exchangeRate,balance:r.total,applied_amount:0,source_payload_hash:r.sourcePayloadHash})}
       if(c.kind==='salesReceipt'){
         if(!realmId)throw new Error('QuickBooks realm is required for Sales Receipt materialization.')
