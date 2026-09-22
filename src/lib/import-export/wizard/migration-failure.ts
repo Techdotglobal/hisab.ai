@@ -4,6 +4,7 @@ import type {
   MigrationActivityEvent,
   MigrationProgressSnapshot,
   ModuleFailureSnapshot,
+  SkippedRecordDiagnostic,
 } from '../types'
 
 export type { ModuleFailureSnapshot }
@@ -93,6 +94,55 @@ export function buildModuleFailureFromRowErrors(
     correlationId: null,
     retryable: primary.errorCode === 'MISSING_DEPENDENCY',
     rowNumber: primary.rowNumber > 0 ? primary.rowNumber : null,
+    stack: null,
+  }
+}
+
+/**
+ * A materializer that returns null (an unresolvable dependency, an unsupported record shape — e.g. `createRecord`
+ * returning `null`) is recorded as a 'unsupported_type' or 'other' skip, not an error, so a job where every processed row
+ * hit that path had 0 imported, 0 updated, 0 failed — and reported `status: 'completed'`. That silently reported success
+ * for a module that migrated nothing (e.g. QuickBooks Transfers: 31/31 rows skipped, 0 imported).
+ *
+ * 'duplicate' (already imported — the expected, correct result of re-running an import) is deliberately excluded: a job
+ * whose rows are all legitimate duplicate-skips must keep reporting 'completed'. 'inactive', 'filtered' and
+ * 'validation_failed' are also excluded — those already have an established, legitimate "completed, nothing to do or
+ * user must fix the source data" meaning.
+ */
+export function silentlySkippedEverything(skippedRecords: Pick<SkippedRecordDiagnostic, 'reason'>[]): boolean {
+  return skippedRecords.length > 0
+    && skippedRecords.every((item) => item.reason === 'unsupported_type' || item.reason === 'other')
+}
+
+/** Pure decision: whether an import job invocation that reached its final page should report 'completed' or 'failed'. */
+export function computeImportJobStatus(input: {
+  importedCount: number
+  updatedCount: number
+  failedCount: number
+  skippedRecords: Pick<SkippedRecordDiagnostic, 'reason'>[]
+}): 'completed' | 'failed' {
+  const nothingWasMigrated = input.importedCount === 0 && input.updatedCount === 0
+  if (!nothingWasMigrated) return 'completed'
+  return input.failedCount > 0 || silentlySkippedEverything(input.skippedRecords) ? 'failed' : 'completed'
+}
+
+/** Builds the failure snapshot for a status:'failed' job, falling back to a synthetic message for an all-skipped job that
+ * produced no row-level errors (buildModuleFailureFromRowErrors returns null when there is nothing to summarize). */
+export function buildFinalJobFailure(
+  errors: ImportRowError[],
+  skippedRecords: Pick<SkippedRecordDiagnostic, 'reason'>[],
+  options: { stage?: string | null } = {},
+): ModuleFailureSnapshot {
+  const fromErrors = buildModuleFailureFromRowErrors(errors, options)
+  if (fromErrors) return fromErrors
+  return {
+    message: `${skippedRecords.length} of ${skippedRecords.length} row(s) were skipped and none were imported or updated.`,
+    stage: options.stage ?? 'materialization',
+    errorCode: 'ALL_ROWS_SKIPPED',
+    errorType: 'ImportRowError',
+    correlationId: null,
+    retryable: false,
+    rowNumber: null,
     stack: null,
   }
 }

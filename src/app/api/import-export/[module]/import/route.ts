@@ -26,7 +26,8 @@ import type { DuplicateStrategy } from '@/lib/import-export/types'
 import { normalizeImportError } from '@/lib/import-export/import/import-error'
 import {
   buildModuleFailureFromException,
-  buildModuleFailureFromRowErrors,
+  buildFinalJobFailure,
+  computeImportJobStatus,
 } from '@/lib/import-export/wizard/migration-failure'
 import { CORRELATION_HEADER, getCorrelationId } from '@/lib/ops/correlation'
 import { withExternalRequestDiagnostics } from '@/lib/ops/external-request-diagnostics'
@@ -410,13 +411,14 @@ async function handleImport(
 
     if (sourcePage) await sourcePage.commit()
 
-    const status = aggregate.failedCount > 0 && aggregate.importedCount === 0 && aggregate.updatedCount === 0
-        ? 'failed'
-        : 'completed'
+    const status = computeImportJobStatus({
+      importedCount: aggregate.importedCount,
+      updatedCount: aggregate.updatedCount,
+      failedCount: aggregate.failedCount,
+      skippedRecords,
+    })
     const rowFailure = status === 'failed'
-      ? buildModuleFailureFromRowErrors(allErrors, {
-        stage: trace.snapshot().currentStage ?? 'materialization',
-      })
+      ? buildFinalJobFailure(allErrors, skippedRecords, { stage: trace.snapshot().currentStage ?? 'materialization' })
       : null
 
     await ensureOwned()

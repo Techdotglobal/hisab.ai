@@ -15,7 +15,7 @@ import {
 import type { FieldDefinition, ModuleDefinition } from '../../types'
 import { processInventoryMovement } from '@/lib/inventory/movements'
 import { postInventoryAdjustmentJournal } from '@/lib/inventory/journal-posting'
-import { createBankTransfer } from '@/lib/banking/transfers'
+import { createBankTransfer, postIdempotentTransferJournal } from '@/lib/banking/transfers'
 import { getInvoiceRepository } from '@/lib/db/provider'
 import { postInvoiceToLedger,postPaymentToLedger } from '@/lib/accounting/document-posting'
 import { createBankDeposit } from '@/lib/banking/transactions'
@@ -282,13 +282,27 @@ async function materializeTransfer(row:Row,companyId:string,userId:string,realmI
   const fromRef=(raw.FromAccountRef??{}) as Row; const toRef=(raw.ToAccountRef??{}) as Row
   const fromCoa=await resolveQuickBooksLocalId(companyId,realmId,string(fromRef.value),['Account'],['chart_of_accounts'])
   const toCoa=await resolveQuickBooksLocalId(companyId,realmId,string(toRef.value),['Account'],['chart_of_accounts'])
-  if(!fromCoa||!toCoa) return null
+  // A resolvable-but-unlinked account must fail loudly rather than silently return null: the job runner previously
+  // recorded that as a "skipped" row with no error, and a job where every row skipped this way still reported
+  // status:'completed' (0 imported, 0 failed) — see the import route's job-completion fix.
+  if(!fromCoa)throw new Error(`QuickBooks account ${string(fromRef.value)} must be migrated before Transfer ${sourceId}.`)
+  if(!toCoa)throw new Error(`QuickBooks account ${string(toRef.value)} must be migrated before Transfer ${sourceId}.`)
+  const amount=number(raw.Amount??row.amount)
+  if(!(amount>0))throw new Error(`QuickBooks Transfer ${sourceId} has no positive amount.`)
+  const date=new Date(string(raw.TxnDate??row.date)||Date.now())
   const banks=await createAdminClient().from('bank_accounts').select('id,account_id').eq('company_id',companyId).in('account_id',[fromCoa.id,toCoa.id]).is('deleted_at',null)
   if(banks.error) throw banks.error
   const from=banks.data?.find(account=>account.account_id===fromCoa.id); const to=banks.data?.find(account=>account.account_id===toCoa.id)
-  if(!from||!to) return null
-  const result=await createBankTransfer({companyId,userId,transferNo:string(raw.DocNumber,`QB-XFER-${sourceId}`),fromAccountId:String(from.id),toAccountId:String(to.id),date:new Date(string(raw.TxnDate??row.date)||Date.now()),amount:number(raw.Amount??row.amount),reference:string(raw.PrivateNote??raw.DocNumber)||null})
-  return {id:result.id,table:'bank_transfers'}
+  if(from&&to){
+    // Both legs are tracked bank/cash accounts: use the existing mechanism (current_balance + bank_transactions feed).
+    const result=await createBankTransfer({companyId,userId,transferNo:string(raw.DocNumber,`QB-XFER-${sourceId}`),fromAccountId:String(from.id),toAccountId:String(to.id),date,amount,reference:string(raw.PrivateNote??raw.DocNumber)||null})
+    return {id:result.id,table:'bank_transfers'}
+  }
+  // At least one side is not a tracked bank account (e.g. an employee-advance asset or a long-term-liability
+  // counterparty). Never force it into bank_accounts merely to satisfy the mechanism above — post the ledger effect
+  // directly: Dr destination / Cr source, no P&L effect.
+  const journalId=await postIdempotentTransferJournal({companyId,userId,date,legacyId:`quickbooks-transfer:${sourceId}`,entryNo:string(raw.DocNumber,`QB-XFER-${sourceId}`),description:`QuickBooks transfer ${string(raw.DocNumber,sourceId)}`,fromAccountId:fromCoa.id,toAccountId:toCoa.id,amount})
+  return {id:journalId,table:'journal_entries'}
 }
 
 async function materializeCreditMemo(row:Row,companyId:string,userId:string,realmId:string) {
@@ -324,10 +338,16 @@ async function materializeBillPayment(row:Row,companyId:string,_userId:string,re
   const vendorRef=(raw.VendorRef??{}) as Row,vendor=vendorRef.value?await resolveQuickBooksLocalId(companyId,realmId,string(vendorRef.value),['Vendor'],['vendors']):null
   if(!vendor)throw new Error(`QuickBooks vendor ${string(vendorRef.value)} must be migrated before bill payment ${sourceId}.`)
   const currency=string((raw.CurrencyRef as Row|undefined)?.value,'SAR'),exchangeRate=number(raw.ExchangeRate,1),resolved=await resolveQuickBooksPaymentAllocations({companyId,realmId,sourcePaymentId:sourceId,kind:'VENDOR',currency,exchangeRate,allocations:relationships.allocations}),db=createAdminClient()
+  // Same settlement-account resolution as the primary vendor-payments path (transactions.module.ts createRecord):
+  // CheckPayment.BankAccountRef, falling back to CreditCardPayment.CCAccountRef, stored on the shared
+  // payments.deposit_account_id column. Never fall back to accounts.bank for a QuickBooks-sourced payment.
+  const settlementAccountSourceId=string(((raw.CheckPayment as Row|undefined)?.BankAccountRef as Row|undefined)?.value??((raw.CreditCardPayment as Row|undefined)?.CCAccountRef as Row|undefined)?.value)
+  const settlementAccount=settlementAccountSourceId?await resolveQuickBooksLocalId(companyId,realmId,settlementAccountSourceId,['Account'],['chart_of_accounts']):null
+  if(settlementAccountSourceId&&!settlementAccount)throw new Error(`QuickBooks deposit account ${settlementAccountSourceId} must be migrated before payment ${sourceId}.`)
   const existing=await db.from('payments').select('id,amount').eq('company_id',companyId).eq('legacy_id',sourceId).is('deleted_at',null).limit(1).maybeSingle();if(existing.error)throw existing.error
   if(existing.data&&Math.abs(Number(existing.data.amount)-relationships.paymentAmount)>0.0001)throw new Error(`Posted QuickBooks bill payment ${sourceId} changed amount; resolve the synchronization conflict.`)
   let paymentId=existing.data?String(existing.data.id):''
-  if(!paymentId){const created=await db.from('payments').insert({company_id:companyId,legacy_id:sourceId,payment_no:string(raw.DocNumber,`QB-BP-${sourceId}`),date:new Date(string(raw.TxnDate)||Date.now()).toISOString(),amount:relationships.paymentAmount,exchange_rate:exchangeRate,base_amount:number(raw.HomeTotalAmt,relationships.paymentAmount*exchangeRate),method:string((raw.PayType??raw.PaymentType),'BANK_TRANSFER'),reference:string(raw.PrivateNote??raw.DocNumber)||null,vendor_id:vendor.id}).select('id').single();if(created.error)throw created.error;paymentId=String(created.data.id)}
+  if(!paymentId){const created=await db.from('payments').insert({company_id:companyId,legacy_id:sourceId,payment_no:string(raw.DocNumber,`QB-BP-${sourceId}`),date:new Date(string(raw.TxnDate)||Date.now()).toISOString(),amount:relationships.paymentAmount,exchange_rate:exchangeRate,base_amount:number(raw.HomeTotalAmt,relationships.paymentAmount*exchangeRate),method:string((raw.PayType??raw.PaymentType),'BANK_TRANSFER'),reference:string(raw.PrivateNote??raw.DocNumber)||null,vendor_id:vendor.id,deposit_account_id:settlementAccount?.id??null}).select('id').single();if(created.error)throw created.error;paymentId=String(created.data.id)}
   await replacePaymentAllocations(companyId,paymentId,resolved);await postPaymentToLedger(paymentId,companyId,currency);return {id:paymentId,table:'payments'}
 }
 

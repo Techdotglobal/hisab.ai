@@ -225,12 +225,16 @@ export async function findSystemAccount(
   matchers: { accountNoPrefix?: string; nameContains?: string; canonicalType?: string },
 ): Promise<string | null> {
   const client = createAdminClient()
+  // Deterministic: without an explicit order, which row wins among several matches depends on database row order, not on
+  // the chart of accounts' own structure — account_no ascending is the one ordering guaranteed to be stable and meaningful
+  // for every chart (it also picks the more specific/shallower account first among sibling matches).
   let query = client
     .from('chart_of_accounts')
     .select('id')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .is('deleted_at', null)
+    .order('account_no', { ascending: true })
     .limit(1)
 
   if (matchers.accountNoPrefix) {

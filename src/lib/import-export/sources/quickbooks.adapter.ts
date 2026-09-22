@@ -467,7 +467,9 @@ function normalizeTransaction(resourceKey: string, row: JsonRecord): Record<stri
     const detailType = value(valueLine.DetailType)
     const detail = object(valueLine.SalesItemLineDetail ?? valueLine.PurchaseItemLineDetail ?? valueLine.ItemBasedExpenseLineDetail ?? valueLine.AccountBasedExpenseLineDetail ?? valueLine.JournalEntryLineDetail ?? valueLine.DiscountLineDetail)
     const item = object(detail.ItemRef)
-    const account = object(detail.AccountRef ?? detail.DiscountAccountRef ?? valueLine.AccountRef)
+    // ItemAccountRef is QuickBooks' resolved revenue/income account for a sales item line (SalesItemLineDetail nests it
+    // alongside ItemRef); without it every invoice/credit-memo line fell through to the unordered accounts.revenue default.
+    const account = object(detail.AccountRef ?? detail.DiscountAccountRef ?? detail.ItemAccountRef ?? valueLine.AccountRef)
     const quantity = Number(detail.Qty ?? 1)
     const rawAmount = Number(valueLine.Amount ?? 0)
     const amount = detailType === 'DiscountLineDetail' ? -Math.abs(rawAmount) : rawAmount
@@ -479,7 +481,11 @@ function normalizeTransaction(resourceKey: string, row: JsonRecord): Record<stri
       quantity: value(quantity),
       unitPrice: value(unitPrice),
       amount: value(amount),
-      taxRate: value(object(valueLine.TaxCodeRef).value ?? 0),
+      // TaxCodeRef is nested inside the detail object (e.g. SalesItemLineDetail.TaxCodeRef), not at the top level of Line —
+      // `valueLine.TaxCodeRef` was always undefined, so every line's taxRate silently defaulted to 0. Mirror the same
+      // detail-first lookup already used correctly by taxCodeSourceId below. Note this still yields a QuickBooks tax-code
+      // ID (e.g. "11"), never a real percentage — transactions.module.ts must not trust it as one for QuickBooks imports.
+      taxRate: value(object(detail.TaxCodeRef ?? valueLine.TaxCodeRef).value ?? 0),
       itemCode: value(item.name ?? item.value),
       itemSourceId: value(item.value),
       accountNo: value(account.name ?? account.value),
@@ -528,8 +534,15 @@ function normalizeTransaction(resourceKey: string, row: JsonRecord): Record<stri
     category: resourceKey === 'expenses' ? 'Other' : '',
     paymentMethod: value(object(row.PaymentMethodRef).name ?? 'Cash'),
     paymentMethodSourceId: value(object(row.PaymentMethodRef).value),
-    depositAccountSourceId: value(object(row.DepositToAccountRef).value),
+    // Customer payments/deposits/sales receipts carry DepositToAccountRef. Vendor payments carry no DepositToAccountRef at
+    // all — their settlement account is CheckPayment.BankAccountRef (or CreditCardPayment.CCAccountRef); this was never
+    // extracted, so every vendor payment posted through the unordered accounts.bank fallback instead of its real account.
+    depositAccountSourceId: value(object(row.DepositToAccountRef).value
+      || object(object(row.CheckPayment).BankAccountRef).value
+      || object(object(row.CreditCardPayment).CCAccountRef).value),
     apAccountSourceId: value(object(row.APAccountRef).value),
+    // Purchase (Expense) header AccountRef names the paying/settlement account; only meaningful for the expenses module.
+    settlementAccountSourceId: resourceKey === 'expenses' ? value(object(row.AccountRef).value) : '',
     lines: JSON.stringify(lines),
   }
 }

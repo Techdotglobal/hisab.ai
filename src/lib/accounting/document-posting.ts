@@ -17,9 +17,12 @@ async function getAccountIds(companyId: string) {
   const revenue = await findSystemAccount(companyId, { accountNoPrefix: '41', canonicalType: 'Income' })
   const vatPayable = await findSystemAccountByNameCandidates(companyId, ['VAT Payable', 'Output VAT', 'Sales Tax Payable'], { canonicalType: 'Liability' })
   const vatReceivable = await findSystemAccountByNameCandidates(companyId, ['VAT Receivable', 'Input VAT', 'Input Tax'], { canonicalType: 'Asset' })
-  const bank = await findSystemAccount(companyId, { accountNoPrefix: '11-1101' })
-  const expense = await findSystemAccount(companyId, { accountNoPrefix: '61' })
-  const salaries = await findSystemAccount(companyId, { nameContains: 'Salaries' })
+  // canonicalType is required here: '11-1101' is "Cash and Bank" (Asset) in the platform default chart, but an imported
+  // chart can reuse the same number range for other sections (e.g. Equity) — without the type filter this silently
+  // resolved to an Equity account. See NETKOM: 203 vendor payments + 1,397 expenses posted to Equity before this fix.
+  const bank = await findSystemAccount(companyId, { accountNoPrefix: '11-1101', canonicalType: 'Asset' })
+  const expense = await findSystemAccount(companyId, { accountNoPrefix: '61', canonicalType: 'Expense' })
+  const salaries = await findSystemAccount(companyId, { nameContains: 'Salaries', canonicalType: 'Expense' })
   return { ar, ap, revenue, vatPayable, vatReceivable, bank, expense, salaries }
 }
 
@@ -269,7 +272,7 @@ export async function postPaymentToLedger(paymentId: string, companyId?: string,
 
   const lines: PostingLine[] = []
   const realizedLines: PostingLine[] = []
-  let settlementAccount = accounts.bank
+  let settlementAccount: string | null = null
   const allocationResult=await client.from('payment_allocations').select('invoice_id,bill_id,cash_amount,source_target_id').eq('company_id',cid).eq('payment_id',paymentId)
   if(allocationResult.error)throw allocationResult.error
   const allocations=allocationResult.data??[]
@@ -281,8 +284,17 @@ export async function postPaymentToLedger(paymentId: string, companyId?: string,
   const customerPayment=invoiceIds.length>0||Boolean(payment.customer_id)||Boolean(payment.invoice_id)
   const vendorPayment=billIds.length>0||Boolean(payment.vendor_id)||Boolean(payment.bill_id)
   if(customerPayment===vendorPayment)throw new Error('Payment must belong to exactly one customer or vendor subledger.')
-  if(customerPayment&&payment.deposit_account_id)settlementAccount=String(payment.deposit_account_id)
+  // deposit_account_id carries the source-resolved settlement account for both payment directions (customer payments from
+  // DepositToAccountRef, vendor payments from CheckPayment.BankAccountRef — see transactions.module.ts createRecord).
+  if(payment.deposit_account_id)settlementAccount=String(payment.deposit_account_id)
   else if(payment.bank_account_id){const linkedBank=await client.from('bank_accounts').select('account_id').eq('company_id',cid).eq('id',payment.bank_account_id).is('deleted_at',null).maybeSingle();if(linkedBank.error)throw linkedBank.error;if(linkedBank.data?.account_id)settlementAccount=String(linkedBank.data.account_id)}
+  if(!settlementAccount){
+    // A QuickBooks-sourced payment (legacy_id set) must never silently fall back to the unordered accounts.bank default —
+    // that is what previously posted 203 vendor payments to an Equity account. Only a native payment with no resolvable
+    // source account uses the fallback.
+    if(payment.legacy_id)throw new Error(`QuickBooks payment ${payment.payment_no} has no resolved settlement account; migrate its source account before posting.`)
+    settlementAccount=accounts.bank
+  }
   if(!settlementAccount)throw new Error(customerPayment?'A bank or Undeposited Funds account is required to post a customer payment.':'A bank account is required to post a vendor payment.')
   const controlAccount=customerPayment?accounts.ar:accounts.ap
   if(!controlAccount)throw new Error(customerPayment?'Accounts Receivable account is required.':'Accounts Payable account is required.')
@@ -369,7 +381,15 @@ export async function postExpenseToLedger(expenseId: string, companyId?: string,
 
   const lines: PostingLine[] = []
   const expenseAccount = accounts.expense
-  const bankAccount = accounts.bank
+  // settlement_account_id carries the source-resolved paying account (QuickBooks Purchase.AccountRef — see
+  // transactions.module.ts createRecord). A QuickBooks-sourced expense (legacy_id set) with no resolved settlement
+  // account must never silently fall back to the unordered accounts.bank default — that previously posted 1,397
+  // expenses to an Equity account. Only a native expense with no resolvable source account uses the fallback.
+  let bankAccount: string | null = expense.settlement_account_id ? String(expense.settlement_account_id) : null
+  if (!bankAccount) {
+    if (expense.legacy_id) throw new Error(`QuickBooks expense ${expense.expense_no} has no resolved settlement account; migrate its source account before posting.`)
+    bankAccount = accounts.bank
+  }
   const total = Number(expense.total)
   const taxAmount = Number(expense.tax_amount ?? 0)
   const subtotal = Math.max(0,total - taxAmount)
