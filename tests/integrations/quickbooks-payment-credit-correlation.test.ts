@@ -220,8 +220,12 @@ test('vendor payments that do not carry a vendor-credit relationship are unaffec
   assert.deepEqual(result.issues, [])
   assert.deepEqual(result.allocations.map((item) => item.sourceLineKey), ['line:0:Bill:BILL-1', 'line:1:Bill:BILL-2'])
 
-  // Cash short of linked lines with no credit evidence (e.g. JournalEntry-linked) keeps failing closed.
-  const jeLinked = extractQuickBooksPaymentRelationships({ TotalAmt: 5000, Line: [{ Amount: 5000, LinkedTxn: [{ TxnType: 'JournalEntry', TxnId: '2671' }] }] }, 'VENDOR')
-  assert.notDeepEqual(jeLinked.issues, [])
-  assert.equal(jeLinked.allocations.length, 0)
+  // A payment line whose only link is a Journal Entry (no Bill) now settles that JE-originated AP liability directly
+  // (Phase 2 item 4: the 29 JE-linked vendor payments) instead of failing closed with no allocation at all.
+  const jeLinked = extractQuickBooksPaymentRelationships({ TotalAmt: 5000, UnappliedAmt: 0, Line: [{ Amount: 5000, LinkedTxn: [{ TxnType: 'JournalEntry', TxnId: '2671' }] }] }, 'VENDOR')
+  assert.deepEqual(jeLinked.issues, [])
+  assert.equal(jeLinked.allocations.length, 1)
+  assert.equal(jeLinked.allocations[0].targetType, 'JournalEntry')
+  assert.equal(jeLinked.allocations[0].targetSourceId, '2671')
+  assert.equal(jeLinked.allocations[0].amount, 5000)
 })

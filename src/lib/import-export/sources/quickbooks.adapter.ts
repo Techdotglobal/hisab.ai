@@ -494,9 +494,26 @@ function normalizeTransaction(resourceKey: string, row: JsonRecord): Record<stri
       taxCodeSourceId: value(object(detail.TaxCodeRef ?? valueLine.TaxCodeRef).value),
       debit: value(detail.PostingType === 'Debit' ? valueLine.Amount ?? 0 : valueLine.Debit ?? 0),
       credit: value(detail.PostingType === 'Credit' ? valueLine.Amount ?? 0 : valueLine.Credit ?? 0),
+      // JournalEntryLineDetail.TaxAmount is an explicit source figure (never inferred): QuickBooks records a taxable JE
+      // line's Amount net of tax, with the tax portion carried separately here rather than as its own Line entry — the
+      // matching settlement line (e.g. the AP/bank side) is already tax-inclusive. Never extracted before this field
+      // existed, which is exactly why so many journal entries' debit and credit sides fell short of balancing by their
+      // tax amount. TaxApplicableOn ('Purchase'/'Sale') decides which VAT account the missing line belongs to.
+      taxAmount: value(Number(detail.TaxAmount ?? 0)),
+      taxApplicableOn: value(detail.TaxApplicableOn ?? ''),
+      // A JournalEntryLineDetail line can name the vendor/customer it belongs to (JE 1878/2495: `Entity: {Type:'Vendor',
+      // EntityRef:{value:'500'}}`) — this is the only place a JE's vendor identity survives; needed to represent a JE's
+      // Accounts-Payable line as a vendor-visible open item without ever posting it to the ledger a second time.
+      entityType: value(object(detail.Entity).Type ?? ''),
+      entitySourceId: value(object(object(detail.Entity).EntityRef).value ?? ''),
     }
   })
-  const journalTotal = resourceKey === 'journal-entries' ? lines.reduce((sum,line)=>sum+Number(line.debit||0),0) : 0
+  // Sum(debit) must equal sum(credit) once the tax portion is included on whichever side originally carried it —
+  // this is what transactions.module.ts actually posts (see the journal line-building loop), so the header total must
+  // match, not the pre-tax sum that silently made every affected JE look short.
+  const journalTotal = resourceKey === 'journal-entries'
+    ? lines.reduce((sum,line)=>sum+Number(line.debit||0)+(Number(line.debit||0)>0?Number(line.taxAmount||0):0),0)
+    : 0
   // QuickBooks Journal Entries report TotalAmt as a literal 0 (it has no real
   // meaning for this entity), so `row.TotalAmt ?? journalTotal` never reached
   // journalTotal — 0 is not nullish. This silently made every journal entry

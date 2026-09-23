@@ -337,7 +337,7 @@ async function materializeBillPayment(row:Row,companyId:string,_userId:string,re
   if(relationships.issues.length)throw new Error(`QuickBooks bill-payment relationships are not certifiable: ${relationships.issues.join(' ')}`)
   const vendorRef=(raw.VendorRef??{}) as Row,vendor=vendorRef.value?await resolveQuickBooksLocalId(companyId,realmId,string(vendorRef.value),['Vendor'],['vendors']):null
   if(!vendor)throw new Error(`QuickBooks vendor ${string(vendorRef.value)} must be migrated before bill payment ${sourceId}.`)
-  const currency=string((raw.CurrencyRef as Row|undefined)?.value,'SAR'),exchangeRate=number(raw.ExchangeRate,1),resolved=await resolveQuickBooksPaymentAllocations({companyId,realmId,sourcePaymentId:sourceId,kind:'VENDOR',currency,exchangeRate,allocations:relationships.allocations}),db=createAdminClient()
+  const currency=string((raw.CurrencyRef as Row|undefined)?.value,'SAR'),exchangeRate=number(raw.ExchangeRate,1),resolved=await resolveQuickBooksPaymentAllocations({companyId,realmId,sourcePaymentId:sourceId,kind:'VENDOR',currency,exchangeRate,allocations:relationships.allocations,vendorId:vendor.id}),db=createAdminClient()
   // Same settlement-account resolution as the primary vendor-payments path (transactions.module.ts createRecord):
   // CheckPayment.BankAccountRef, falling back to CreditCardPayment.CCAccountRef, stored on the shared
   // payments.deposit_account_id column. Never fall back to accounts.bank for a QuickBooks-sourced payment.

@@ -3,10 +3,11 @@ import { toCamel } from '@/lib/api/db-transform'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queryByIdOrLegacy } from '@/lib/db/repository-utils'
 import { resolveCompanyId } from '@/lib/tenant'
+import { listVendorItemsForStatement } from '@/lib/accounting/vendor-open-items'
 
 interface StatementEntry {
   date: string
-  type: 'BILL' | 'PAYMENT' | 'VENDOR_CREDIT'
+  type: 'BILL' | 'PAYMENT' | 'VENDOR_CREDIT' | 'JE_OPEN_ITEM'
   reference: string
   description: string
   debit: number
@@ -82,6 +83,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const credits = creditsRes.data ?? []
+    // JE/expense-originating AP open items (items 2/3): the JE/expense itself is never re-posted here — this only
+    // surfaces the existing vendor_open_items subledger index so the statement isn't missing the "29 JE-linked vendor
+    // payments" and 13 AP-debit expenses that bills/vendor_credits alone would never show.
+    const openItems = await listVendorItemsForStatement(companyId, vendorId, dateFrom ? new Date(dateFrom) : undefined, dateTo ? new Date(dateTo) : undefined)
 
     const rawEntries: Omit<StatementEntry, 'balance'>[] = [
       ...bills.map((bill) => ({
@@ -108,6 +113,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         debit: 0,
         credit: Number(credit.total),
       })),
+      ...openItems.map((item) => {
+        const documentId = item.sourceReference.split(':')[0]
+        const reference = `${item.sourceType === 'JOURNAL_ENTRY' ? 'JE' : 'EXP'}-${documentId}`
+        const description = item.description || `QuickBooks ${item.sourceType === 'JOURNAL_ENTRY' ? 'Journal Entry' : 'Expense'} ${documentId}`
+        return {
+          date: item.date.toISOString(),
+          type: 'JE_OPEN_ITEM' as const,
+          reference,
+          description,
+          debit: item.direction === 'PAYABLE' ? item.total : 0,
+          credit: item.direction === 'CREDIT' ? item.total : 0,
+        }
+      }),
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
     let running = 0
@@ -119,7 +137,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const totalBilled = bills.reduce((sum, bill) => sum + Number(bill.total), 0)
     const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount), 0)
     const totalCredits = credits.reduce((sum, credit) => sum + Number(credit.total), 0)
-    const outstanding = bills.reduce((sum, bill) => sum + Number(bill.balance), 0)
+    const outstandingOpenItems = openItems.reduce((sum, item) => sum + (item.direction === 'PAYABLE' ? item.balance : -item.balance), 0)
+    const outstanding = bills.reduce((sum, bill) => sum + Number(bill.balance), 0) + outstandingOpenItems
 
     return Response.json({
       vendor: toCamel(vendorRow),
