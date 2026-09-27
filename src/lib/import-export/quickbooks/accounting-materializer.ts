@@ -40,6 +40,13 @@ const CONFIG: Record<string,{ table:string; sourceType:string; post?:(id:string,
 
 function text(value:unknown) { return value === null || value === undefined ? '' : String(value) }
 
+// Modules whose native materializer can route a single document through more than one posting
+// mechanism depending on the data (e.g. qb-transfers posts as a BANK_TRANSFER when both legs are
+// tracked bank accounts, otherwise falls back to a plain JOURNAL entry when at least one leg is not).
+// Ledger verification for these can't filter by a single expected source_type without false-failing
+// every document that took the other path, so it only checks that a posting exists at all.
+const MULTI_SOURCE_TYPE_MODULES = new Set(['sales-receipts', 'qb-transfers'])
+
 function requiresLedgerFor(config: (typeof CONFIG)[string], moduleKey:string, sourceRow:Row) {
   if (!config.requiresLedger) return false
   // QuickBooks permits zero-value journal documents, expenses, invoices, and
@@ -61,7 +68,7 @@ export async function hasPostedLedger(companyId:string,moduleKey:string,localId:
   const config = CONFIG[moduleKey]
   if (!config?.requiresLedger) return false
   let query=createAdminClient().from('ledger_entries').select('id').eq('company_id',companyId).eq('source_id',localId)
-  if(moduleKey!=='sales-receipts')query=query.eq('source_type',config.sourceType)
+  if(!MULTI_SOURCE_TYPE_MODULES.has(moduleKey))query=query.eq('source_type',config.sourceType)
   const result = await query.limit(1)
   if (result.error) throw result.error
   return Boolean(result.data?.length)
@@ -113,7 +120,7 @@ async function materializeQuickBooksAccountingImpl(input:{ companyId:string; use
     }
     if (requiresLedgerFor(config,input.moduleKey,input.sourceRow)) {
       let realLedgerQuery = db.from('ledger_entries').select('id').eq('company_id',input.companyId).eq('source_id',input.localId)
-      if (input.moduleKey !== 'sales-receipts') realLedgerQuery = realLedgerQuery.eq('source_type',config.sourceType)
+      if (!MULTI_SOURCE_TYPE_MODULES.has(input.moduleKey)) realLedgerQuery = realLedgerQuery.eq('source_type',config.sourceType)
       const realLedgerCheck = await realLedgerQuery.limit(1)
       if (realLedgerCheck.error) throw realLedgerCheck.error
       if ((realLedgerCheck.data?.length ?? 0) > 0) {
@@ -141,7 +148,7 @@ async function materializeQuickBooksAccountingImpl(input:{ companyId:string; use
     const verificationStage=await db.from('quickbooks_materialization_runs').update({validation:{sourceId,stage:'ledger_verification',stageStartedAt:new Date().toISOString()},updated_at:new Date().toISOString()}).eq('company_id',input.companyId).eq('realm_id',realmId).eq('entity_type',entityType).eq('source_id',sourceId).eq('module_key',input.moduleKey)
     if(verificationStage.error)throw verificationStage.error
     const ledgerQuery=requiresLedger?db.from('ledger_entries').select('id').eq('company_id',input.companyId).eq('source_id',input.localId):null
-    if(ledgerQuery&&input.moduleKey!=='sales-receipts')ledgerQuery.eq('source_type',config.sourceType)
+    if(ledgerQuery&&!MULTI_SOURCE_TYPE_MODULES.has(input.moduleKey))ledgerQuery.eq('source_type',config.sourceType)
     const ledger = ledgerQuery?await ledgerQuery:{data:[] as Array<{id:string}>,error:null}
     if (ledger.error) throw ledger.error
     const inventory = config.checksInventory ? await db.from('stock_movements').select('id').eq('company_id',input.companyId).eq('source_type',config.sourceType).eq('source_id',input.localId) : { data:[] as Array<{id:string}>, error:null }

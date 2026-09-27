@@ -322,19 +322,32 @@ export async function findArchivedRecord(companyId: string, realmId: string, ent
   return data
 }
 
+// Positive-result-only cache: a resolved (found) link is safe to reuse for the rest of this process's lifetime,
+// since nothing in an import run un-links an already-migrated record. A miss is never cached, so a dependency that
+// gets linked later in the same run (or a genuinely-unresolvable reference) is always re-checked against the
+// database rather than risking a stale "not found". This lookup was previously uncached and called once per line
+// reference (account/item/class/etc.), which dominated materialization time for transaction modules with many lines
+// per record (measured ~265 DB queries per journal-entries record).
+const quickBooksLocalIdCache = new Map<string, { id: string; table: string }>()
 export async function resolveQuickBooksLocalId(companyId: string, realmId: string, sourceId: string, entityTypes?: string[], localTables?: string[]) {
+  const cacheKey = `${companyId}:${realmId}:${sourceId}:${(entityTypes ?? []).slice().sort().join(',')}:${(localTables ?? []).slice().sort().join(',')}`
+  const cached = quickBooksLocalIdCache.get(cacheKey)
+  if (cached) return cached
   let query = createAdminClient().from('quickbooks_migration_records').select('local_id,local_table').eq('company_id', companyId).eq('realm_id', realmId).eq('source_id', sourceId).not('local_id', 'is', null).limit(1)
   if (entityTypes?.length) query = query.in('entity_type', entityTypes)
   if (localTables?.length) query = query.in('local_table', localTables)
   const { data, error } = await query.maybeSingle()
   if (error) throw error
-  if(data)return { id: String(data.local_id), table: String(data.local_table) }
+  if(data){ const resolved={ id: String(data.local_id), table: String(data.local_table) }; quickBooksLocalIdCache.set(cacheKey,resolved); return resolved }
   let linkQuery = createAdminClient().from('quickbooks_migration_local_links').select('local_id,local_table').eq('company_id',companyId).eq('realm_id',realmId).eq('source_id',sourceId).order('updated_at',{ascending:false}).limit(1)
   if (entityTypes?.length) linkQuery = linkQuery.in('entity_type',entityTypes)
   if (localTables?.length) linkQuery = linkQuery.in('local_table',localTables)
   const linked = await linkQuery.maybeSingle()
   if (linked.error) throw linked.error
-  return linked.data ? { id:String(linked.data.local_id), table:String(linked.data.local_table) } : null
+  if (!linked.data) return null
+  const resolved = { id:String(linked.data.local_id), table:String(linked.data.local_table) }
+  quickBooksLocalIdCache.set(cacheKey,resolved)
+  return resolved
 }
 
 export async function resolveQuickBooksCustomerContext(companyId:string,realmId:string,sourceId:string) {

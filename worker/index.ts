@@ -24,14 +24,22 @@ async function run() {
   // Start heartbeat loop independent of job processing
   const { touchWorkerHeartbeat } = await import('@/lib/platform/worker-heartbeat')
   const hbInterval = Math.max(5000, Number(process.env.WORKER_HEARTBEAT_MS ?? 30_000))
-  const hbTimer = setInterval(() => { void touchWorkerHeartbeat(workerName, process.pid) }, hbInterval)
+  const logHeartbeatFailure = (error: unknown) => console.error(JSON.stringify({
+    event: 'quickbooks_worker_heartbeat_failed',
+    message: error instanceof Error ? error.message : String(error),
+  }))
+  const hbTimer = setInterval(() => { touchWorkerHeartbeat(workerName, process.pid).catch(logHeartbeatFailure) }, hbInterval)
   // Run immediately once
-  await touchWorkerHeartbeat(workerName, process.pid)
+  await touchWorkerHeartbeat(workerName, process.pid).catch(logHeartbeatFailure)
 
   // Start continuation recovery loop in parallel
   const { recoverOrphanedContinuations } = await import('@/lib/platform/continuation-scheduler')
   const recoveryInterval = Math.max(10_000, Number(process.env.WORKER_RECOVERY_MS ?? 30_000))
-  const recoveryTimer = setInterval(() => { void recoverOrphanedContinuations() }, recoveryInterval)
+  const logRecoveryFailure = (error: unknown) => console.error(JSON.stringify({
+    event: 'quickbooks_worker_recovery_failed',
+    message: error instanceof Error ? error.message : String(error),
+  }))
+  const recoveryTimer = setInterval(() => { recoverOrphanedContinuations().catch(logRecoveryFailure) }, recoveryInterval)
 
   try {
     while (!stopping) {

@@ -17,10 +17,20 @@ import type { QuickBooksPaymentAllocation } from '../../quickbooks/payment-relat
 // Same candidate lists/canonical types already used by getAccountIds (document-posting.ts) and buildTaxJournalLines
 // (tax/journal-posting.ts) — reused rather than reinvented, so a QuickBooks journal-entry tax line resolves to the exact
 // same account any other VAT posting in this codebase would use. Never hardcodes an account number.
+//
+// Cached per (companyId, taxApplicableOn): this resolves one of a company's fixed system VAT accounts, which the
+// accounts module has already migrated before journal-entries ever runs — the result cannot change mid-import.
+// A journal entry with several taxable lines (all "Purchase" or all "Sale") was re-running this exact query once per
+// line, which dominated materialization time (measured ~265 DB queries/record) for no benefit.
+const journalTaxAccountCache = new Map<string, string | null>()
 async function resolveJournalTaxAccount(companyId:string,taxApplicableOn:string){
-  if(taxApplicableOn==='Purchase')return findSystemAccountByNameCandidates(companyId,['VAT Receivable','Input VAT','Input Tax'],{canonicalType:'Asset'})
-  if(taxApplicableOn==='Sale')return findSystemAccountByNameCandidates(companyId,['VAT Payable','Output VAT','Sales Tax Payable'],{canonicalType:'Liability'})
-  return null
+  const cacheKey=`${companyId}:${taxApplicableOn}`
+  if(journalTaxAccountCache.has(cacheKey))return journalTaxAccountCache.get(cacheKey)!
+  let result:string|null=null
+  if(taxApplicableOn==='Purchase')result=await findSystemAccountByNameCandidates(companyId,['VAT Receivable','Input VAT','Input Tax'],{canonicalType:'Asset'})
+  else if(taxApplicableOn==='Sale')result=await findSystemAccountByNameCandidates(companyId,['VAT Payable','Output VAT','Sales Tax Payable'],{canonicalType:'Liability'})
+  journalTaxAccountCache.set(cacheKey,result)
+  return result
 }
 
 const fields: FieldDefinition[] = [
@@ -348,10 +358,27 @@ function makeModule(c: Config): ModuleDefinition {
               const vatAccount=await resolveJournalTaxAccount(ctx.companyId,String(l.taxApplicableOn??''))
               if(!vatAccount)throw new Error(`QuickBooks Journal Entry ${r.sourceId} line ${lineIndex+1} has a tax amount of ${taxAmount} but no resolvable VAT account for TaxApplicableOn '${l.taxApplicableOn}'.`)
               const isDebit=Number(l.debit??0)>0
-              lineRows.push({[c.lineForeignKey!]:data.id,company_id:ctx.companyId,account_id:vatAccount,description:`VAT on ${l.description??r.description??'Imported QuickBooks journal line'}`,debit:isDebit?taxAmount:0,credit:isDebit?0:taxAmount,cost_center_id:null})
+              // tax_rate must be present (not omitted) here: a bulk `.insert(lineRows)` below builds one INSERT from
+              // objects with inconsistent keys, and Supabase pads any row missing a column with an explicit NULL
+              // rather than letting the column's DEFAULT 0 apply — omitting it violated journal_lines' NOT NULL
+              // constraint on every journal entry that has a VAT-bearing line.
+              lineRows.push({[c.lineForeignKey!]:data.id,company_id:ctx.companyId,account_id:vatAccount,description:`VAT on ${l.description??r.description??'Imported QuickBooks journal line'}`,debit:isDebit?taxAmount:0,credit:isDebit?0:taxAmount,tax_rate:0,cost_center_id:null})
             }
           }
-        } if(['bill','expense'].includes(c.kind))for(const line of lineRows){if(Number(line.amount)<0||(line.unit_price!==undefined&&Number(line.unit_price)<0))throw new Error(`QuickBooks ${c.displayName} produced a negative amount/unit_price line, which violates the ${c.lineTable}_amount_nonneg_chk constraint.`)} const {error:le}=await createAdminClient().from(c.lineTable).insert(lineRows); if(le) throw le }
+        } if(['bill','expense'].includes(c.kind))for(const line of lineRows){if(Number(line.amount)<0||(line.unit_price!==undefined&&Number(line.unit_price)<0))throw new Error(`QuickBooks ${c.displayName} produced a negative amount/unit_price line, which violates the ${c.lineTable}_amount_nonneg_chk constraint.`)}
+          if(c.kind==='journal'){
+            // Journal lines are a mix of regular lines and synthesized VAT lines (see above), which do not share the
+            // exact same key set. PostgREST builds one INSERT statement from an array of objects, using the union of
+            // all keys across the array and padding any object missing a key with an explicit NULL for that column
+            // — it never falls back to the column's own DEFAULT for a row that simply omitted the key. Inserting one
+            // row at a time avoids this entirely: each request only ever carries the keys that single object has.
+            for(const line of lineRows){
+              const {error:le}=await createAdminClient().from(c.lineTable).insert(line); if(le) throw le
+            }
+          } else {
+            const {error:le}=await createAdminClient().from(c.lineTable).insert(lineRows); if(le) throw le
+          }
+        }
         if(c.kind==='customerPayment'||c.kind==='vendorPayment')await preservePaymentAllocations({companyId:ctx.companyId,realmId,paymentId:String(data.id),kind:c.kind,row:r,fallbackTargetId:paymentTargetId,vendorId:c.kind==='vendorPayment'?vendorId:null})
         if(c.kind==='journal')await createJournalVendorOpenItems(ctx.companyId,realmId,r,String(data.id))
         if(c.kind==='expense')await createExpenseVendorOpenItems(ctx.companyId,realmId,r,String(data.id))
