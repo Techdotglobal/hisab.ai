@@ -6,10 +6,10 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { id } = await params
     const expense = await prisma.expense.findUnique({
-      where: { id },
+      where: { id, companyId: user.companyId },
       include: { lines: { include: { account: true } }, receipt: true },
     })
     if (!expense) return Response.json({ error: 'Not found' }, { status: 404 })
@@ -26,7 +26,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const body = await request.json()
 
     const existing = await prisma.expense.findUnique({
-      where: { id },
+      where: { id, companyId: user.companyId },
       include: { lines: true },
     })
     if (!existing) return Response.json({ error: 'Not found' }, { status: 404 })
@@ -39,7 +39,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         : existing.currency
 
       const expense = await prisma.expense.update({
-        where: { id },
+        where: { id, companyId: user.companyId },
         data: {
           date: body.date ? new Date(body.date) : existing.date,
           description: body.description ?? existing.description,
@@ -81,7 +81,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       : existing.currency
 
     const expense = await prisma.expense.update({
-      where: { id },
+      where: { id, companyId: user.companyId },
       data: {
         date: body.date ? new Date(body.date) : existing.date,
         description: body.description ?? existing.description,
@@ -122,9 +122,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { id } = await params
-    await prisma.expense.delete({ where: { id } })
+    await prisma.expense.delete({ where: { id, companyId: user.companyId } })
     return Response.json({ success: true })
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 })

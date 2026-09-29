@@ -15,7 +15,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params
     const body = await request.json()
 
-    const invoice = await prisma.invoice.findUnique({ where: { id } })
+    const invoice = await prisma.invoice.findUnique({ where: { id, companyId } })
     if (!invoice) return Response.json({ error: 'Invoice not found' }, { status: 404 })
     if (invoice.balance <= 0) return Response.json({ error: 'Invoice is already fully paid' }, { status: 400 })
 
@@ -45,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (methodError) throw methodError
     await replacePaymentAllocations(companyId,payment.id,[{invoiceId:id,amount:appliedAmount,cashAmount:appliedAmount,creditAmount:0,currency,sourceSystem:'HISAB',sourceLineKey:`invoice:${id}`}])
     await postPaymentToLedger(payment.id, companyId)
-    const updated = await prisma.invoice.findUnique({ where: { id } })
+    const updated = await prisma.invoice.findUnique({ where: { id, companyId } })
     return Response.json(updated)
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

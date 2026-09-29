@@ -9,9 +9,10 @@ import { requireRole } from '@/lib/authz'
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { id } = await params
     const bill = await prisma.bill.findUnique({
-      where: { id },
+      where: { id, companyId },
       include: { vendor: true, lines: { include: { account: true } }, payments: true },
     })
     if (!bill) return Response.json({ error: 'Not found' }, { status: 404 })
@@ -27,7 +28,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const companyId = await resolveCompanyId()
     const { id } = await params
     const body = await request.json()
-    const existing = await prisma.bill.findUnique({ where: { id } })
+    const existing = await prisma.bill.findUnique({ where: { id, companyId } })
     if (!existing) return Response.json({ error: 'Not found' }, { status: 404 })
 
     let subtotal = 0
@@ -53,7 +54,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const nextStatus = body.status || existing.status
     const bill = await prisma.bill.update({
-      where: { id },
+      where: { id, companyId },
       data: {
         vendorId: body.vendorId,
         date: new Date(body.date),
@@ -105,7 +106,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const companyId = await resolveCompanyId()
     const { id } = await params
-    await prisma.bill.delete({ where: { id } })
+    await prisma.bill.delete({ where: { id, companyId } })
     await logAudit({ companyId, userId: user.id, action: 'BILL_DELETED', entityType: 'bill', entityId: id })
     return Response.json({ success: true })
   } catch (error) {

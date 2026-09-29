@@ -41,6 +41,7 @@ export async function GET(request: Request) {
 
     const invoices = await prisma.invoice.findMany({
       where: {
+        companyId,
         date: { gte: from, lte: to },
         status: { in: ['SENT', 'PAID', 'PARTIAL'] },
       },
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
 
     const bills = await prisma.bill.findMany({
       where: {
+        companyId,
         date: { gte: from, lte: to },
         status: { in: ['RECEIVED', 'PAID', 'PARTIAL'] },
       },

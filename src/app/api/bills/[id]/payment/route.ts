@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params
     const body = await request.json()
 
-    const bill = await prisma.bill.findUnique({ where: { id } })
+    const bill = await prisma.bill.findUnique({ where: { id, companyId } })
     if (!bill) return Response.json({ error: 'Bill not found' }, { status: 404 })
     if (bill.balance <= 0) return Response.json({ error: 'Bill is already fully paid' }, { status: 400 })
 
@@ -55,7 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       entityId: id,
       details: { paymentId: payment.id, amount:requestedAmount, appliedAmount, paymentNo },
     })
-    const updated = await prisma.bill.findUnique({ where: { id } })
+    const updated = await prisma.bill.findUnique({ where: { id, companyId } })
     return Response.json(updated)
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

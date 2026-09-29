@@ -8,11 +8,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params
     const { prisma } = await import('@/lib/prisma')
 
-    const existing = await prisma.payrollEntry.findUnique({ where: { id } })
+    const existing = await prisma.payrollEntry.findUnique({ where: { id, companyId: user.companyId } })
     if (!existing) return Response.json({ error: 'Not found' }, { status: 404 })
 
     const payroll = await prisma.payrollEntry.update({
-      where: { id },
+      where: { id, companyId: user.companyId },
       data: { status: 'APPROVED' },
     })
 

@@ -1,10 +1,12 @@
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveCompanyId } from '@/lib/tenant'
 import { getNextSequence } from '@/lib/sequences'
 
 export async function POST(request: Request) {
   try {
     const user = await requireAuth()
+    const companyId = await resolveCompanyId()
     const { rows } = await request.json()
 
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
           continue
         }
 
-        const vendor = await prisma.vendor.findFirst({ where: { name: { equals: vendorName } } })
+        const vendor = await prisma.vendor.findFirst({ where: { companyId, name: { equals: vendorName } } })
         if (!vendor) {
           errors.push(`Bill "${vendorName}" on ${date}: Vendor not found — create it first`)
           continue

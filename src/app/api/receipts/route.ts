@@ -1,12 +1,15 @@
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveCompanyId } from '@/lib/tenant'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
 
 export async function GET() {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const receipts = await prisma.receipt.findMany({
+      where: { companyId },
       include: { uploadedBy: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     })

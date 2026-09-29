@@ -2,6 +2,7 @@ import { requireAuth } from '@/lib/auth'
 import { processZatcaInvoice } from '@/lib/zatca/invoice-service'
 import { validateXmlCompliance } from '@/lib/zatca/validation/xml-compliance'
 import { prisma } from '@/lib/prisma'
+import { resolveCompanyId } from '@/lib/tenant'
 
 /**
  * GET /api/zatca/invoices/[id]/compliance
@@ -13,10 +14,11 @@ export async function GET(
 ) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { id } = await params
 
     const invoice = await prisma.invoice.findUnique({
-      where: { id },
+      where: { id, companyId },
       select: { id: true, invoiceType: true },
     })
     if (!invoice) {

@@ -20,14 +20,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { id } = await params
     const body = await request.json()
 
-    const existing = await prisma.inventoryItem.findUnique({ where: { id } })
+    const existing = await prisma.inventoryItem.findUnique({ where: { id, companyId } })
     if (!existing) return Response.json({ error: 'Not found' }, { status: 404 })
 
     const item = await prisma.inventoryItem.update({
-      where: { id },
+      where: { id, companyId },
       data: {
         name: body.name ?? existing.name,
         description: body.description ?? existing.description,
@@ -42,7 +43,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     })
 
     if (body.quantity !== undefined && Number(body.quantity) !== Number(existing.quantity)) {
-      const companyId = await resolveCompanyId()
       const delta = Number(body.quantity) - Number(existing.quantity)
       const movementNo = await getNextSequence('STOCK_MOVEMENT', 'SM-')
       const client = createAdminClient()
@@ -71,8 +71,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { id } = await params
-    await prisma.inventoryItem.delete({ where: { id } })
+    await prisma.inventoryItem.delete({ where: { id, companyId } })
     return Response.json({ success: true })
   } catch (error) {
     return Response.json({ error: String(error) }, { status: 500 })

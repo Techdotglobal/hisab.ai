@@ -1,10 +1,12 @@
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveCompanyId } from '@/lib/tenant'
 import { getNextSequence } from '@/lib/sequences'
 
 export async function POST(request: Request) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const body = await request.json()
     const { employeeIds, periodStart, periodEnd, period, taxRate, allowances, deductions } = body
 
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
 
     const results = []
     for (const employeeId of employeeIds as string[]) {
-      const employee = await prisma.employee.findUnique({ where: { id: employeeId } })
+      const employee = await prisma.employee.findUnique({ where: { id: employeeId, companyId } })
       if (!employee) continue
 
       const basicSalary = employee.salary

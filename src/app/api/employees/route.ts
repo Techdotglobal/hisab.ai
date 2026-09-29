@@ -1,21 +1,28 @@
 ﻿import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getNextSequence } from '@/lib/sequences'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export async function GET(request: Request) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') ?? ''
 
     const employees = await prisma.employee.findMany({
-      where: search ? {
-        OR: [
-          { name: { contains: search } },
-          { employeeNo: { contains: search } },
-          { department: { contains: search } },
+      where: {
+        AND: [
+          { companyId },
+          search ? {
+            OR: [
+              { name: { contains: search } },
+              { employeeNo: { contains: search } },
+              { department: { contains: search } },
+            ],
+          } : {},
         ],
-      } : {},
+      },
       orderBy: { name: 'asc' },
     })
 

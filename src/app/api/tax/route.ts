@@ -1,10 +1,12 @@
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveCompanyId } from '@/lib/tenant'
 
 export async function GET() {
   try {
     await requireAuth()
-    const taxRates = await prisma.taxRate.findMany({ orderBy: { rate: 'desc' } })
+    const companyId = await resolveCompanyId()
+    const taxRates = await prisma.taxRate.findMany({ where: { companyId }, orderBy: { rate: 'desc' } })
     return Response.json(taxRates)
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

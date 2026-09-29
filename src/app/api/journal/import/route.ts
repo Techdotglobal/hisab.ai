@@ -1,10 +1,12 @@
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveCompanyId } from '@/lib/tenant'
 import { getNextSequence } from '@/lib/sequences'
 
 export async function POST(request: Request) {
   try {
     const user = await requireAuth()
+    const companyId = await resolveCompanyId()
     const { rows } = await request.json()
 
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
             hasError = true
             break
           }
-          const account = await prisma.chartOfAccount.findFirst({ where: { accountNo: row.accountNo } })
+          const account = await prisma.chartOfAccount.findFirst({ where: { companyId, accountNo: row.accountNo } })
           if (!account) {
             errors.push(`Entry "${description}" on ${date}: Account "${row.accountNo}" not found`)
             hasError = true
