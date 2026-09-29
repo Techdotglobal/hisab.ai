@@ -308,15 +308,31 @@ function delegate(model: string) {
   return {
     async findMany(args: AnyRecord = {}) {
       const client = createAdminClient()
-      let query = client.from(table).select('*')
-      query = applyWhere(query, args.where)
-      query = applyOrder(query, args.orderBy)
-      if (args.take) query = query.limit(args.take)
+      const skip: number = args.skip ?? 0
+      const take: number | undefined = args.take
 
-      const { data, error } = await query
-      if (error) throw error
+      // PostgREST caps an unbounded select at its own server-side max-rows setting (commonly
+      // 1000), silently truncating rather than erroring. A caller that didn't pass `take` means
+      // "give me everything", so page through with `.range()` until a page comes back short.
+      const data: AnyRecord[] = []
+      const pageSize = 1000
+      let offset = skip
+      for (;;) {
+        const remaining = take !== undefined ? take - data.length : undefined
+        if (remaining !== undefined && remaining <= 0) break
+        const pageLimit = remaining !== undefined ? Math.min(pageSize, remaining) : pageSize
+        let query = client.from(table).select('*')
+        query = applyWhere(query, args.where)
+        query = applyOrder(query, args.orderBy)
+        query = query.range(offset, offset + pageLimit - 1)
+        const { data: page, error } = await query
+        if (error) throw error
+        data.push(...(page ?? []))
+        if (!page || page.length < pageLimit) break
+        offset += page.length
+      }
 
-      const rows = await Promise.all((data ?? []).map(async (row) => attachIncludes(model, toCamelDeep(row), args.include, client)))
+      const rows = await Promise.all(data.map(async (row) => attachIncludes(model, toCamelDeep(row), args.include, client)))
       return args.select ? rows.map((row) => applySelect(row, args.select)) : rows
     },
 
