@@ -31,6 +31,9 @@ export default function JournalPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -40,7 +43,7 @@ export default function JournalPage() {
 
   async function load() {
     setLoading(true)
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ page: String(page) })
     if (search) params.set('search', search)
     const [entRes, accRes, ccRes] = await Promise.all([
       fetch(`/api/journal?${params}`),
@@ -48,10 +51,15 @@ export default function JournalPage() {
       fetch('/api/cost-centers'),
     ])
     if (entRes.ok) {
-      setEntries(await entRes.json())
+      const payload = await entRes.json() as { items: JournalEntry[]; total: number; totalPages: number }
+      setEntries(payload.items)
+      setTotal(payload.total)
+      setTotalPages(payload.totalPages)
       setError('')
     } else {
       setEntries([])
+      setTotal(0)
+      setTotalPages(1)
       setError(await readApiError(entRes))
     }
     if (accRes.ok) setAccounts(await accRes.json())
@@ -59,7 +67,14 @@ export default function JournalPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [search])
+  useEffect(() => { load() }, [search, page])
+
+  function updateSearch(value: string) {
+    // Batched with setSearch so the [search, page] effect above fires once with both
+    // new values, instead of once for the stale page and again after it resets to 1.
+    setPage(1)
+    setSearch(value)
+  }
 
   const totalDebit = form.lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
   const totalCredit = form.lines.reduce((s, l) => s + (Number(l.credit) || 0), 0)
@@ -110,7 +125,7 @@ export default function JournalPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Journal Entries</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{entries.length} entries</p>
+          <p className="text-gray-500 text-sm mt-0.5">{total} entries</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors">
@@ -125,7 +140,7 @@ export default function JournalPage() {
       <div className="flex gap-3 mb-4">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search entries..."
+          <input value={search} onChange={(e) => updateSearch(e.target.value)} placeholder="Search entries..."
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
       </div>
@@ -171,6 +186,27 @@ export default function JournalPage() {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm text-gray-600">
+            <span>Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <CsvImportModal type="journal" open={showImport} onClose={() => setShowImport(false)} onSuccess={load} />

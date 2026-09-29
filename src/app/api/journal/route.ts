@@ -6,10 +6,20 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import { maybeStartWorkflow } from '@/lib/workflow/integration'
 
+const DEFAULT_PAGE_SIZE = 50
+const MAX_PAGE_SIZE = 100
+
 /**
  * List journals the same way Recent Activity does: tenant-scoped + soft-delete aware.
  * The Prisma shim's findMany does not implement AND/OR and does not inject company_id,
  * so the previous listing query failed and the page silently showed an empty list.
+ *
+ * Paginated at the database level (`.range()` on the root `journal_entries` query, which
+ * bounds how many entries PostgREST fetches before joining their nested lines/account/
+ * cost-center rows — the nested join itself is never re-run per entry, so this stays a
+ * single bounded query rather than an N+1). Before this, the route fetched every entry for
+ * the company in one unbounded query; with ~2,100 entries and some carrying 20-57 lines
+ * each, that query started hitting Postgres' statement timeout (57014) outright.
  */
 export async function GET(request: Request) {
   try {
@@ -18,7 +28,13 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const search = (searchParams.get('search') ?? '').trim()
     const status = (searchParams.get('status') ?? '').trim()
+    const page = Math.max(1, Math.floor(Number(searchParams.get('page')) || 1))
+    const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(searchParams.get('pageSize')) || DEFAULT_PAGE_SIZE)))
     const client = createAdminClient()
+    const safeSearch = search
+      // Strip PostgREST or()-filter metacharacters so user input cannot break the filter.
+      ? search.replace(/[%_,.()]/g, ' ').replace(/\s+/g, ' ').trim()
+      : ''
 
     let query = client
       .from('journal_entries')
@@ -30,32 +46,51 @@ export async function GET(request: Request) {
           account:chart_of_accounts(*),
           cost_center:cost_centers(*)
         )
-      `)
+      `, { count: 'exact' })
       .eq('company_id', companyId)
       .is('deleted_at', null)
+      // `date` alone is not a unique key — many entries share a date, which would let
+      // .range() skip or repeat rows across pages depending on how Postgres breaks ties.
+      // `id` as a secondary sort makes the ordering (and therefore the pagination) stable.
       .order('date', { ascending: false })
+      .order('id', { ascending: false })
 
     if (status) query = query.eq('status', status)
-    if (search) {
-      // Strip PostgREST or()-filter metacharacters so user input cannot break the filter.
-      const safe = search.replace(/[%_,.()]/g, ' ').replace(/\s+/g, ' ').trim()
-      if (safe) {
-        query = query.or(`entry_no.ilike.%${safe}%,description.ilike.%${safe}%`)
-      }
+    if (safeSearch) query = query.or(`entry_no.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
+
+    const from = (page - 1) * pageSize
+    const { data, error, count } = await query.range(from, from + pageSize - 1)
+
+    let entries: Array<Record<string, unknown>> = []
+    let total = count ?? 0
+    if (error) {
+      // A page past the last one asks PostgREST for an offset beyond the row count, which it
+      // reports as PGRST103 ("Requested range not satisfiable") with data/count both null,
+      // rather than an empty result — that is a valid, expected page value, not a real error.
+      // Re-run just the count (no range) so the response still reports the real total/totalPages.
+      if (error.code !== 'PGRST103') throw error
+      let countQuery = client.from('journal_entries').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('deleted_at', null)
+      if (status) countQuery = countQuery.eq('status', status)
+      if (safeSearch) countQuery = countQuery.or(`entry_no.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
+      const countOnly = await countQuery
+      if (countOnly.error) throw countOnly.error
+      total = countOnly.count ?? 0
+    } else {
+      entries = (toCamel(data ?? []) as Array<Record<string, unknown>>).map((row) => {
+        const createdBy = row.createdBy as { fullName?: string; name?: string } | null | undefined
+        return {
+          ...row,
+          createdBy: { name: createdBy?.name ?? createdBy?.fullName ?? '' },
+        }
+      })
     }
-
-    const { data, error } = await query
-    if (error) throw error
-
-    const entries = (toCamel(data ?? []) as Array<Record<string, unknown>>).map((row) => {
-      const createdBy = row.createdBy as { fullName?: string; name?: string } | null | undefined
-      return {
-        ...row,
-        createdBy: { name: createdBy?.name ?? createdBy?.fullName ?? '' },
-      }
+    return Response.json({
+      items: entries,
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
     })
-
-    return Response.json(entries)
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
