@@ -8,6 +8,7 @@ import { maybeStartWorkflow } from '@/lib/workflow/integration'
 export async function GET(request: Request) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') ?? ''
     const status = searchParams.get('status') ?? ''
@@ -15,6 +16,7 @@ export async function GET(request: Request) {
     const expenses = await prisma.expense.findMany({
       where: {
         AND: [
+          { companyId },
           search ? {
             OR: [
               { expenseNo: { contains: search } },

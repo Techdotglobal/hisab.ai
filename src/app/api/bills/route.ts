@@ -11,6 +11,7 @@ import { requireRole } from '@/lib/authz'
 export async function GET(request: Request) {
   try {
     await requireAuth()
+    const companyId = await resolveCompanyId()
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') ?? ''
     const status = searchParams.get('status') ?? ''
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
     const bills = await prisma.bill.findMany({
       where: {
         AND: [
+          { companyId },
           search ? {
             OR: [
               { billNo: { contains: search } },

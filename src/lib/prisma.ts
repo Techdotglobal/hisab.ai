@@ -158,11 +158,73 @@ async function addCompanyId(row: AnyRecord, table: string) {
   return row
 }
 
+// Builds one `column.operator.value` fragment for a PostgREST `.or()`/`.not()` filter string.
+// Returns null for a condition this flat-table shim cannot express as a single column comparison
+// (e.g. a nested relation filter like `{ vendor: { name: { contains } } }`) rather than throwing,
+// since that would otherwise silently be attempted as a bogus column named after the relation.
+function toFilterFragment(rawKey: string, rawValue: unknown): string | null {
+  const key = snake(rawKey)
+  const value = rawValue as any
+  const escape = (v: unknown) => String(v).replace(/[,()]/g, (m) => `\\${m}`)
+  if (value && typeof value === 'object' && !(value instanceof Date) && !Array.isArray(value)) {
+    if ('contains' in value) return `${key}.ilike.%${escape(value.contains)}%`
+    if ('equals' in value) return `${key}.eq.${escape(value.equals)}`
+    if ('in' in value && Array.isArray(value.in)) return `${key}.in.(${value.in.map(escape).join(',')})`
+    if ('not' in value) return `${key}.neq.${escape(value.not)}`
+    if ('gte' in value) return `${key}.gte.${escape(value.gte instanceof Date ? value.gte.toISOString() : value.gte)}`
+    if ('lte' in value) return `${key}.lte.${escape(value.lte instanceof Date ? value.lte.toISOString() : value.lte)}`
+    if ('gt' in value) return `${key}.gt.${escape(value.gt instanceof Date ? value.gt.toISOString() : value.gt)}`
+    if ('lt' in value) return `${key}.lt.${escape(value.lt instanceof Date ? value.lt.toISOString() : value.lt)}`
+    return null
+  }
+  if (value === null) return `${key}.is.null`
+  return `${key}.eq.${escape(value instanceof Date ? value.toISOString() : value)}`
+}
+
+// Flattens a Prisma-style OR array into the top-level field conditions this shim can express as
+// PostgREST filter fragments, skipping any nested relation filter it can't (see toFilterFragment).
+function orFragments(conditions: AnyRecord[]): string[] {
+  const fragments: string[] = []
+  for (const condition of conditions) {
+    for (const [key, value] of Object.entries(condition)) {
+      if (value === undefined) continue
+      const fragment = toFilterFragment(key, value)
+      if (fragment) fragments.push(fragment)
+    }
+  }
+  return fragments
+}
+
 function applyWhere(query: any, where?: AnyRecord) {
   if (!where) return query
 
   for (const [rawKey, rawValue] of Object.entries(where)) {
     if (rawValue === undefined) continue
+
+    // Prisma's AND/OR/NOT combinators have no column of their own — snake-casing them like an
+    // ordinary field (AND -> `_a_n_d`) sent a query for a nonexistent column and failed every
+    // caller that filters this way (e.g. the Expenses/Bills list APIs, which always wrap their
+    // filter in `{ AND: [...] }` even with no search/status selected).
+    if (rawKey === 'AND' && Array.isArray(rawValue)) {
+      for (const condition of rawValue) query = applyWhere(query, condition)
+      continue
+    }
+    if (rawKey === 'OR' && Array.isArray(rawValue)) {
+      const fragments = orFragments(rawValue)
+      if (fragments.length) query = query.or(fragments.join(','))
+      continue
+    }
+    if (rawKey === 'NOT' && rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue)) {
+      for (const [key, value] of Object.entries(rawValue as AnyRecord)) {
+        if (value === undefined) continue
+        const fragment = toFilterFragment(key, value)
+        if (!fragment) continue
+        const [, operator, ...rest] = fragment.split('.')
+        query = query.not(snake(key), operator, rest.join('.'))
+      }
+      continue
+    }
+
     const key = snake(rawKey)
     const value = rawValue as any
 
