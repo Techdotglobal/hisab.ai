@@ -1,6 +1,6 @@
 import 'server-only'
 import type { DashboardPayload } from '../entities'
-import { resolveCompanyId, supabaseDb, toNumber } from '../repository-utils'
+import { fetchAllRows, resolveCompanyId, supabaseDb, toNumber } from '../repository-utils'
 import { buildActivityFeed } from './dashboard-activity'
 import type { DashboardRepository } from './dashboard.repository.interface'
 
@@ -41,26 +41,33 @@ export const supabaseDashboardRepository: DashboardRepository = {
       paymentsRes,
       usersRes,
     ] = await Promise.all([
-      db.from('invoices').select('*').eq('company_id', companyId).is('deleted_at', null),
-      db.from('bills').select('*').eq('company_id', companyId).is('deleted_at', null),
-      db.from('expenses').select('*').eq('company_id', companyId).is('deleted_at', null),
-      db.from('payroll_entries').select('*').eq('company_id', companyId).is('deleted_at', null),
-      db.from('customers').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null),
-      db.from('vendors').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null),
-      db
+      // Each of these previously ran as a single unbounded select, which PostgREST caps at
+      // its own server-side max-rows setting (commonly 1000) and silently truncates rather
+      // than erroring. invoices (569) and bills (178) never crossed that line, but expenses
+      // (1,393) and journal_entries (2,100+) did — showing "1000" on the dashboard tiles and,
+      // worse, undercounting the totals summed from the truncated `expenses` array below.
+      // fetchAllRows pages past the cap for every one of these so none of them can silently
+      // regress the same way as a table grows.
+      fetchAllRows(() => db.from('invoices').select('*').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('bills').select('*').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('expenses').select('*').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('payroll_entries').select('*').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('customers').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null)),
+      fetchAllRows(() => db.from('vendors').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null)),
+      fetchAllRows(() => db
         .from('chart_of_accounts')
         .select('id, sub_type')
         .eq('company_id', companyId)
         .eq('is_active', true)
         .neq('sub_type', 'Header')
-        .is('deleted_at', null),
-      db.from('journal_entries').select('id, status').eq('company_id', companyId).is('deleted_at', null),
-      db.from('cost_centers').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null),
-      db.from('employees').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null),
-      db.from('inventory_items').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null),
-      db.from('receipts').select('id').eq('company_id', companyId).is('deleted_at', null),
-      db.from('payments').select('id').eq('company_id', companyId).is('deleted_at', null),
-      db.from('company_users').select('id').eq('company_id', companyId).eq('is_active', true),
+        .is('deleted_at', null)),
+      fetchAllRows(() => db.from('journal_entries').select('id, status').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('cost_centers').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null)),
+      fetchAllRows(() => db.from('employees').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null)),
+      fetchAllRows(() => db.from('inventory_items').select('id').eq('company_id', companyId).eq('is_active', true).is('deleted_at', null)),
+      fetchAllRows(() => db.from('receipts').select('id').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('payments').select('id').eq('company_id', companyId).is('deleted_at', null)),
+      fetchAllRows(() => db.from('company_users').select('id').eq('company_id', companyId).eq('is_active', true)),
     ])
 
     for (const res of [
