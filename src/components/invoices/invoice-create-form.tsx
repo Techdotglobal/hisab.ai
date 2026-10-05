@@ -18,7 +18,7 @@ import {
 import { todayDateString, isFutureInvoiceDate } from '@/lib/ui/invoice-status'
 import { formatCurrency as formatAmount, cn } from '@/lib/utils'
 import { defaultUnitPriceFromProject } from '@/lib/cost-centers/product-catalog'
-import { formatChartOfAccountLabel, postableInvoiceLineAccounts } from '@/lib/invoices/line-accounts'
+import { formatChartOfAccountLabel, fxReservedAccountIds, postableInvoiceLineAccounts } from '@/lib/invoices/line-accounts'
 
 export interface InvoiceFormLine {
   itemName: string
@@ -121,6 +121,7 @@ export function InvoiceCreateForm({
   const [projects, setProjects] = useState<CostCenter[]>([])
   const [classes, setClasses] = useState<CostCenter[]>([])
   const [locations, setLocations] = useState<CostCenter[]>([])
+  const [reservedAccountIds, setReservedAccountIds] = useState<ReadonlySet<string>>(new Set())
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([])
   const [termPreset, setTermPreset] = useState<PaymentTermPresetKey>('NET_30')
   const [attachments, setAttachments] = useState<InvoiceAttachmentView[]>([])
@@ -138,14 +139,19 @@ export function InvoiceCreateForm({
 
   useEffect(() => {
     async function loadLookups() {
-      const [taxRes, projectRes, classRes, locationRes, termsRes] = await Promise.all([
+      const [taxRes, projectRes, classRes, locationRes, termsRes, currencyRes] = await Promise.all([
         fetch('/api/tax-configurations'),
         // Names only — product Cost/metadata loaded on selection
         fetch('/api/cost-centers?type=PROJECT&activeOnly=true'),
         fetch('/api/cost-centers?type=CLASS&activeOnly=true'),
         fetch('/api/cost-centers?type=LOCATION&activeOnly=true'),
         fetch('/api/master-data/payment_terms'),
+        fetch('/api/currency/settings'),
       ])
+      if (currencyRes.ok) {
+        const payload = (await currencyRes.json()) as { settings?: Parameters<typeof fxReservedAccountIds>[0] }
+        setReservedAccountIds(fxReservedAccountIds(payload.settings ?? null))
+      }
       if (taxRes.ok) {
         const taxes = await taxRes.json()
         setTaxConfigs(taxes)
@@ -220,7 +226,7 @@ export function InvoiceCreateForm({
   }
 
   function lineAccountOptions(selectedId: string): Account[] {
-    const postable = postableInvoiceLineAccounts(accounts)
+    const postable = postableInvoiceLineAccounts(accounts, reservedAccountIds)
     const selected = selectedId ? accounts.find((a) => a.id === selectedId) : undefined
     return selected && !postable.some((a) => a.id === selected.id) ? [selected, ...postable] : postable
   }

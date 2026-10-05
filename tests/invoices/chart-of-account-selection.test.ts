@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { invoiceLineRevenueAccount } from '../../src/lib/accounting/document-posting'
-import { formatChartOfAccountLabel, postableInvoiceLineAccounts } from '../../src/lib/invoices/line-accounts'
+import {
+  fxReservedAccountIds,
+  formatChartOfAccountLabel,
+  postableInvoiceLineAccounts,
+} from '../../src/lib/invoices/line-accounts'
 
 // Shaped like production chart_of_accounts rows for NETKOM (values read read-only).
 const production = [
@@ -53,6 +57,55 @@ describe('postable Chart of Accounts for invoice lines', () => {
   })
 })
 
+// Production rows: 41-4103 and 41-4104 are the company's realized/unrealized gain accounts in currency_settings;
+// QB-336 is QuickBooks' UnappliedCashPaymentIncome system subtype with no hisab posting path.
+const fxGainRealized = { id: '08407ebb-855d-4988-912c-50fe267197d4', accountNo: '41-4103', name: 'Realized FX Gain', fullName: 'INCOME:Sales Income:Realized FX Gain', legacyId: null, accountType: 'Income', subType: 'Income', parentNo: '41', isActive: true }
+const fxGainUnrealized = { id: '9b9f03ba-2fb8-45a8-9473-cc4c0a426dd5', accountNo: '41-4104', name: 'Unrealized FX Gain', fullName: 'INCOME:Sales Income:Unrealized FX Gain', legacyId: null, accountType: 'Income', subType: 'Income', parentNo: '41', isActive: true }
+const unappliedCash = { id: 'af276e23-0b40-4552-a564-1e96eeaa626f', accountNo: 'QB-336', name: 'Unapplied Cash Payment Income', fullName: 'Unapplied Cash Payment Income', legacyId: '336', accountType: 'Income', subType: 'UnappliedCashPaymentIncome', parentNo: null, isActive: true }
+const withSystemAccounts = [...production, fxGainRealized, fxGainUnrealized, unappliedCash]
+const fxSettings = {
+  realizedGainAccountId: fxGainRealized.id,
+  realizedLossAccountId: 'uuid-61-6104',
+  unrealizedGainAccountId: fxGainUnrealized.id,
+  unrealizedLossAccountId: 'uuid-61-6105',
+}
+
+describe('FX and system accounts are excluded from invoice lines', () => {
+  it('excludes the realized and unrealized FX gain accounts configured for the company', () => {
+    const ids = postableInvoiceLineAccounts(withSystemAccounts, fxReservedAccountIds(fxSettings)).map((a) => a.accountNo)
+    assert.equal(ids.includes('41-4103'), false)
+    assert.equal(ids.includes('41-4104'), false)
+  })
+
+  it('excludes FX accounts by configured identity, not by name', () => {
+    const renamed = { ...fxGainRealized, name: 'Other income' }
+    const ids = postableInvoiceLineAccounts([renamed], fxReservedAccountIds(fxSettings)).map((a) => a.id)
+    assert.deepEqual(ids, [])
+  })
+
+  it('keeps valid Income accounts selectable', () => {
+    const ids = postableInvoiceLineAccounts(withSystemAccounts, fxReservedAccountIds(fxSettings)).map((a) => a.accountNo)
+    assert.deepEqual(ids, ['41-4101-410101', 'QB-2'])
+  })
+
+  it('excludes QB-336 Unapplied Cash Payment Income by its system subtype', () => {
+    const ids = postableInvoiceLineAccounts([unappliedCash]).map((a) => a.accountNo)
+    assert.deepEqual(ids, [])
+  })
+
+  it('a company without FX settings still offers all valid Income accounts', () => {
+    assert.deepEqual(fxReservedAccountIds(null).size, 0)
+    const ids = postableInvoiceLineAccounts(production, fxReservedAccountIds(null)).map((a) => a.accountNo)
+    assert.deepEqual(ids, ['41-4101-410101', 'QB-2'])
+  })
+
+  it('reserved set collects all four configured FX accounts', () => {
+    assert.deepEqual([...fxReservedAccountIds(fxSettings)].sort(), [
+      'uuid-61-6104', 'uuid-61-6105', fxGainRealized.id, fxGainUnrealized.id,
+    ].sort())
+  })
+})
+
 describe('invoice line revenue posting uses the selected account', () => {
   it('selected chart of account is the revenue account', () => {
     assert.equal(invoiceLineRevenueAccount('uuid-410101', 'uuid-default'), 'uuid-410101')
@@ -93,6 +146,12 @@ describe('form and posting wiring', () => {
 
   it('posting selects the line account through the shared helper', () => {
     assert.match(posting, /const accountId = invoiceLineRevenueAccount\(line\.account_id, revenueAccount\)/)
+  })
+
+  it('form loads the company FX settings and filters those accounts out of the selector', () => {
+    assert.match(form, /fetch\('\/api\/currency\/settings'\)/)
+    assert.match(form, /setReservedAccountIds\(fxReservedAccountIds\(payload\.settings \?\? null\)\)/)
+    assert.match(form, /postableInvoiceLineAccounts\(accounts, reservedAccountIds\)/)
   })
 
   it('edit restores the stored account id', () => {
