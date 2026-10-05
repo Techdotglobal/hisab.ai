@@ -50,6 +50,20 @@ describe('complete-dataset paging for invoice aggregations', () => {
     assert.match(financial, /\.order\('date'\)\.order\('id'\)/)
   })
 
+  it('sales list endpoints read complete result sets with deterministic ordering', () => {
+    const files = [
+      'src/app/api/sales-transactions/route.ts',
+      'src/app/api/sales-receipts/route.ts',
+      'src/app/api/estimates/route.ts',
+      'src/app/api/sales-orders/route.ts',
+    ]
+    for (const file of files) {
+      const source = readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
+      assert.match(source, /fetchAllRows\(/, `${file} must page through fetchAllRows`)
+      assert.match(source, /\.order\('id', \{ ascending: true \}\)/, `${file} needs an id tie-breaker`)
+    }
+  })
+
   it('payment lookups are chunked so the invoice-id filter cannot exceed URL limits', () => {
     const statement = readFileSync('src/lib/sales/customer-statement.ts', 'utf8').replace(/\r\n/g, '\n')
     assert.match(statement, /PAYMENT_LOOKUP_CHUNK = 100/)

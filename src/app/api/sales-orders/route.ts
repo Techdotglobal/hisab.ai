@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import { processSalesLines } from '@/lib/sales/line-utils'
 import { getNextSequence } from '@/lib/sequences'
+import { fetchAllRows } from '@/lib/db/repository-utils'
 
 function mapSalesOrder(row: Record<string, unknown>, customer?: { name?: string } | null) {
   return {
@@ -45,17 +46,18 @@ export async function GET(request: Request) {
     const status = searchParams.get('status')?.trim()
 
     const client = createAdminClient()
-    let query = client
-      .from('sales_orders')
-      .select('*, customers(name)')
-      .eq('company_id', companyId)
-      .is('deleted_at', null)
-      .order('date', { ascending: false })
+    const buildQuery = () => {
+      let query = client
+        .from('sales_orders')
+        .select('*, customers(name)')
+        .eq('company_id', companyId)
+        .is('deleted_at', null)
+      if (status) query = query.eq('status', status)
+      if (search) query = query.ilike('order_no', `%${search}%`)
+      return query.order('date', { ascending: false }).order('id', { ascending: true })
+    }
 
-    if (status) query = query.eq('status', status)
-    if (search) query = query.ilike('order_no', `%${search}%`)
-
-    const { data, error } = await query
+    const { data, error } = await fetchAllRows(buildQuery)
     if (error) throw error
 
     return Response.json((data ?? []).map((row) => {
