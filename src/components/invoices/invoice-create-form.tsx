@@ -18,7 +18,7 @@ import {
 import { todayDateString, isFutureInvoiceDate } from '@/lib/ui/invoice-status'
 import { formatCurrency as formatAmount, cn } from '@/lib/utils'
 import { defaultUnitPriceFromProject } from '@/lib/cost-centers/product-catalog'
-import { postableInvoiceLineAccounts } from '@/lib/invoices/line-accounts'
+import { formatChartOfAccountLabel, postableInvoiceLineAccounts } from '@/lib/invoices/line-accounts'
 
 export interface InvoiceFormLine {
   itemName: string
@@ -82,7 +82,7 @@ export const EMPTY_INVOICE_LINE: InvoiceFormLine = {
 }
 
 interface Customer { id: string; name: string }
-interface Account { id: string; accountNo: string; name: string; accountType?: string | null; isActive?: boolean }
+interface Account { id: string; accountNo: string; name: string; accountType?: string | null; subType?: string | null; parentNo?: string | null; isActive?: boolean }
 interface CostCenter { id: string; code: string; name: string; type: string }
 interface PaymentTerm { id: string; name: string; days: number }
 
@@ -227,7 +227,7 @@ export function InvoiceCreateForm({
 
   function accountTitle(selectedId: string): string | undefined {
     const selected = accounts.find((a) => a.id === selectedId)
-    return selected ? `${selected.accountNo} · ${selected.name}` : undefined
+    return selected ? formatChartOfAccountLabel(selected) : undefined
   }
 
   function onTaxSelect(idx: number, taxRateId: string) {
@@ -498,7 +498,7 @@ export function InvoiceCreateForm({
                 {[
                   { label: 'Item', align: 'text-left' },
                   { label: 'Description', align: 'text-left' },
-                  { label: 'Account', align: 'text-left' },
+                  { label: 'Chart of Account', align: 'text-left' },
                   { label: 'Project / Service', align: 'text-left' },
                   { label: 'Class', align: 'text-left' },
                   { label: 'Location', align: 'text-left' },
@@ -550,7 +550,7 @@ export function InvoiceCreateForm({
                       >
                         <option value="">— Default revenue —</option>
                         {lineAccountOptions(line.accountId).map((a) => (
-                          <option key={a.id} value={a.id}>{a.accountNo} · {a.name}</option>
+                          <option key={a.id} value={a.id}>{formatChartOfAccountLabel(a)}</option>
                         ))}
                       </select>
                     </td>

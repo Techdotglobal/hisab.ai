@@ -41,9 +41,9 @@ describe('invoice create form line account wiring', () => {
     assert.match(source, /onChange=\{\(e\) => updateLine\(idx, \{ accountId: e\.target\.value \}\)\}/)
   })
 
-  it('keeps the Account column between Description and Project / Service', () => {
+  it('keeps the Chart of Account column between Description and Project / Service', () => {
     const description = source.indexOf("{ label: 'Description'")
-    const account = source.indexOf("{ label: 'Account'")
+    const account = source.indexOf("{ label: 'Chart of Account'")
     const project = source.indexOf("{ label: 'Project / Service'")
     assert.ok(description > 0 && account > description && project > account)
   })
