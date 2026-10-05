@@ -145,6 +145,7 @@ export function mapInvoiceLineRow(row: Record<string, unknown>): InvoiceLineReco
     className: (row.class_name as string | null) ?? null,
     projectId: (row.project_id as string | null) ?? null,
     classId: (row.class_id as string | null) ?? null,
+    locationId: (row.location_id as string | null) ?? null,
     description: String(row.description ?? ''),
     quantity: toNumber(row.quantity),
     unitPrice: toNumber(row.unit_price),

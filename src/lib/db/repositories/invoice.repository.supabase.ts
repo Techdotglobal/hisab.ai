@@ -7,6 +7,13 @@ import {
   type InvoiceTaxCalculationMethod,
 } from '@/lib/invoices/calculations'
 import { normalizeTaxCalculationMethod } from '@/lib/invoices/validation'
+import {
+  changedPostedInvoiceFields,
+  isPostedInvoiceStatus,
+  POSTED_INVOICE_DELETE_ERROR,
+  POSTED_INVOICE_EDIT_ERROR,
+  postedLineSignature,
+} from '@/lib/invoices/posted-guard'
 import { randomUUID } from 'crypto'
 import {
   mapChartOfAccountRow,
@@ -33,7 +40,7 @@ function formatIssueTime(date: Date): string {
   return date.toTimeString().split(' ')[0]
 }
 
-function processLines(
+export function processLines(
   lines: InvoiceLineInput[],
   method: InvoiceTaxCalculationMethod = 'TAX_EXCLUSIVE',
 ) {
@@ -61,6 +68,7 @@ function processLines(
       itemName: line.itemName?.trim() || null,
       projectId: line.projectId || null,
       classId: line.classId || null,
+      locationId: line.locationId || null,
       projectService: line.projectService?.trim() || null,
       className: line.className?.trim() || null,
     }
@@ -71,7 +79,7 @@ function processLines(
 
 async function resolveTypedCostCenter(
   id: string | null | undefined,
-  expectedType: 'PROJECT' | 'CLASS',
+  expectedType: 'PROJECT' | 'CLASS' | 'LOCATION',
   companyId: string,
 ): Promise<{ id: string; name: string } | null> {
   if (!id) return null
@@ -152,6 +160,7 @@ async function buildLineRows(
     lines.map(async (line) => {
       const project = await resolveTypedCostCenter(line.projectId, 'PROJECT', companyId)
       const classCenter = await resolveTypedCostCenter(line.classId, 'CLASS', companyId)
+      const location = await resolveTypedCostCenter(line.locationId, 'LOCATION', companyId)
 
       return {
         company_id: companyId,
@@ -162,6 +171,7 @@ async function buildLineRows(
         tax_rate_id: await resolveScopedUuid('tax_rates', line.taxRateId, companyId),
         project_id: project?.id ?? null,
         class_id: classCenter?.id ?? null,
+        ...(location ? { location_id: location.id } : {}),
         description: line.description,
         item_name: line.itemName,
         project_service: project?.name ?? line.projectService,
@@ -508,7 +518,41 @@ export const supabaseInvoiceRepository: InvoiceRepository = {
       patch.invoice_type = await resolveInvoiceTypeForCustomer(customerIdForClassification, companyId)
     }
 
-    if (input.lines !== undefined) {
+    let rewriteLines = input.lines !== undefined
+    if (isPostedInvoiceStatus(existing.status)) {
+      const method = normalizeTaxCalculationMethod(
+        input.taxCalculationMethod ?? existing.taxCalculationMethod,
+      )
+      const submittedLines = input.lines !== undefined ? processLines(input.lines, method).processedLines : undefined
+      const { data: storedLineRows, error: storedLinesError } = await db
+        .from('invoice_lines')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('invoice_id', invoiceId)
+      if (storedLinesError) throw storedLinesError
+      const changed = changedPostedInvoiceFields(
+        {
+          customer: String(existingRow.customer_id ?? ''),
+          date: new Date(String(existingRow.date)).toISOString(),
+          currency: String(existingRow.currency ?? ''),
+          taxCalculationMethod: String(existingRow.tax_calculation_method ?? ''),
+          status: existing.status,
+          lines: postedLineSignature((storedLineRows ?? []).map(mapInvoiceLineRow)),
+        },
+        {
+          customer: patch.customer_id as string | undefined,
+          date: patch.date ? new Date(patch.date as string).toISOString() : undefined,
+          currency: patch.currency as string | undefined,
+          taxCalculationMethod: patch.tax_calculation_method as string | undefined,
+          status: patch.status as string | undefined,
+          lines: submittedLines ? postedLineSignature(submittedLines) : undefined,
+        },
+      )
+      if (changed.length > 0) throw new Error(POSTED_INVOICE_EDIT_ERROR)
+      rewriteLines = false
+    }
+
+    if (rewriteLines && input.lines !== undefined) {
       const method = normalizeTaxCalculationMethod(
         input.taxCalculationMethod ?? existing.taxCalculationMethod,
       )
@@ -559,6 +603,7 @@ export const supabaseInvoiceRepository: InvoiceRepository = {
     if (!existingRow) throw new Error('Invoice not found')
     const existing = mapInvoiceRow(existingRow)
     if (existing.status === 'PAID') throw new Error('Cannot delete paid invoice')
+    if (isPostedInvoiceStatus(existing.status)) throw new Error(POSTED_INVOICE_DELETE_ERROR)
 
     const { error } = await db
       .from('invoices')

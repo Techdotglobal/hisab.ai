@@ -18,12 +18,14 @@ import {
 import { todayDateString, isFutureInvoiceDate } from '@/lib/ui/invoice-status'
 import { formatCurrency as formatAmount, cn } from '@/lib/utils'
 import { defaultUnitPriceFromProject } from '@/lib/cost-centers/product-catalog'
+import { postableInvoiceLineAccounts } from '@/lib/invoices/line-accounts'
 
 export interface InvoiceFormLine {
   itemName: string
   description: string
   projectId: string
   classId: string
+  locationId: string
   projectService: string
   className: string
   quantity: number
@@ -69,6 +71,7 @@ export const EMPTY_INVOICE_LINE: InvoiceFormLine = {
   description: '',
   projectId: '',
   classId: '',
+  locationId: '',
   projectService: '',
   className: '',
   quantity: 1,
@@ -79,7 +82,7 @@ export const EMPTY_INVOICE_LINE: InvoiceFormLine = {
 }
 
 interface Customer { id: string; name: string }
-interface Account { id: string; accountNo: string; name: string }
+interface Account { id: string; accountNo: string; name: string; accountType?: string | null; isActive?: boolean }
 interface CostCenter { id: string; code: string; name: string; type: string }
 interface PaymentTerm { id: string; name: string; days: number }
 
@@ -117,6 +120,7 @@ export function InvoiceCreateForm({
   const [taxConfigs, setTaxConfigs] = useState<TaxConfigOption[]>([])
   const [projects, setProjects] = useState<CostCenter[]>([])
   const [classes, setClasses] = useState<CostCenter[]>([])
+  const [locations, setLocations] = useState<CostCenter[]>([])
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([])
   const [termPreset, setTermPreset] = useState<PaymentTermPresetKey>('NET_30')
   const [attachments, setAttachments] = useState<InvoiceAttachmentView[]>([])
@@ -134,11 +138,12 @@ export function InvoiceCreateForm({
 
   useEffect(() => {
     async function loadLookups() {
-      const [taxRes, projectRes, classRes, termsRes] = await Promise.all([
+      const [taxRes, projectRes, classRes, locationRes, termsRes] = await Promise.all([
         fetch('/api/tax-configurations'),
         // Names only — product Cost/metadata loaded on selection
         fetch('/api/cost-centers?type=PROJECT&activeOnly=true'),
         fetch('/api/cost-centers?type=CLASS&activeOnly=true'),
+        fetch('/api/cost-centers?type=LOCATION&activeOnly=true'),
         fetch('/api/master-data/payment_terms'),
       ])
       if (taxRes.ok) {
@@ -162,6 +167,7 @@ export function InvoiceCreateForm({
       }
       if (projectRes.ok) setProjects(await projectRes.json())
       if (classRes.ok) setClasses(await classRes.json())
+      if (locationRes.ok) setLocations(await locationRes.json())
       if (termsRes.ok) {
         const rows = await termsRes.json()
         setPaymentTerms(
@@ -211,6 +217,17 @@ export function InvoiceCreateForm({
       ...f,
       lines: f.lines.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
     }))
+  }
+
+  function lineAccountOptions(selectedId: string): Account[] {
+    const postable = postableInvoiceLineAccounts(accounts)
+    const selected = selectedId ? accounts.find((a) => a.id === selectedId) : undefined
+    return selected && !postable.some((a) => a.id === selected.id) ? [selected, ...postable] : postable
+  }
+
+  function accountTitle(selectedId: string): string | undefined {
+    const selected = accounts.find((a) => a.id === selectedId)
+    return selected ? `${selected.accountNo} · ${selected.name}` : undefined
   }
 
   function onTaxSelect(idx: number, taxRateId: string) {
@@ -462,16 +479,18 @@ export function InvoiceCreateForm({
           Line Items
         </label>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[1280px] table-fixed">
+          <table className="w-full min-w-[1400px] table-fixed">
             <colgroup>
+              <col className="w-[11%]" />
+              <col className="w-[13%]" />
               <col className="w-[14%]" />
-              <col className="w-[24%]" />
-              <col className="w-[16%]" />
-              <col className="w-[16%]" />
-              <col className="w-[7%]" />
-              <col className="w-[9%]" />
-              <col className="w-[10%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[5%]" />
               <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
               <col className="w-[40px]" />
             </colgroup>
             <thead>
@@ -479,8 +498,10 @@ export function InvoiceCreateForm({
                 {[
                   { label: 'Item', align: 'text-left' },
                   { label: 'Description', align: 'text-left' },
+                  { label: 'Account', align: 'text-left' },
                   { label: 'Project / Service', align: 'text-left' },
                   { label: 'Class', align: 'text-left' },
+                  { label: 'Location', align: 'text-left' },
                   { label: 'Qty', align: 'text-right' },
                   { label: 'Unit Price', align: 'text-right' },
                   { label: 'Tax', align: 'text-left' },
@@ -522,6 +543,19 @@ export function InvoiceCreateForm({
                     </td>
                     <td className="px-2 py-2">
                       <select
+                        value={line.accountId}
+                        onChange={(e) => updateLine(idx, { accountId: e.target.value })}
+                        className="input-base w-full bg-white py-1.5 text-xs"
+                        title={accountTitle(line.accountId)}
+                      >
+                        <option value="">— Default revenue —</option>
+                        {lineAccountOptions(line.accountId).map((a) => (
+                          <option key={a.id} value={a.id}>{a.accountNo} · {a.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-2 py-2">
+                      <select
                         value={line.projectId}
                         onChange={(e) => {
                           void onProjectSelect(idx, e.target.value)
@@ -551,6 +585,18 @@ export function InvoiceCreateForm({
                         <option value="">— Select class —</option>
                         {classes.map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-2 py-2">
+                      <select
+                        value={line.locationId}
+                        onChange={(e) => updateLine(idx, { locationId: e.target.value })}
+                        className="input-base w-full bg-white py-1.5 text-xs"
+                      >
+                        <option value="">— Select location —</option>
+                        {locations.map((l) => (
+                          <option key={l.id} value={l.id}>{l.name}</option>
                         ))}
                       </select>
                     </td>

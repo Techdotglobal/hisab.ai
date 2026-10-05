@@ -83,6 +83,7 @@ export interface InvoiceLineRecord {
   className: string | null
   projectId: string | null
   classId: string | null
+  locationId?: string | null
   description: string
   quantity: number
   unitPrice: number

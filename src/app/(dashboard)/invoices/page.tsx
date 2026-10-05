@@ -39,6 +39,7 @@ interface InvoiceLine {
   className?: string
   projectId?: string
   classId?: string
+  locationId?: string
   taxRateId?: string
 }
 interface Invoice {
@@ -79,6 +80,7 @@ const EMPTY_LINE: InvoiceLine = {
   className: '',
   projectId: '',
   classId: '',
+  locationId: '',
   taxRateId: '',
 }
 
@@ -252,6 +254,7 @@ export default function InvoicesPage() {
         description: line.description,
         projectId: line.projectId || null,
         classId: line.classId || null,
+        locationId: line.locationId || null,
         projectService: line.projectService || null,
         className: line.className || null,
         quantity: line.quantity,
@@ -411,11 +414,12 @@ export default function InvoicesPage() {
       taxCalculationMethod: full.taxCalculationMethod ?? 'TAX_EXCLUSIVE',
       isRecurring: full.isRecurring ?? false,
       lines: (full.lines ?? []).length > 0
-        ? full.lines.map((line: InvoiceLine & { taxRateId?: string; itemName?: string; projectService?: string; className?: string; projectId?: string; classId?: string }) => ({
+        ? full.lines.map((line: InvoiceLine & { taxRateId?: string; itemName?: string; projectService?: string; className?: string; projectId?: string; classId?: string; locationId?: string }) => ({
             itemName: line.itemName ?? '',
             description: line.description ?? '',
             projectId: line.projectId ?? '',
             classId: line.classId ?? '',
+            locationId: line.locationId ?? '',
             projectService: line.projectService ?? '',
             className: line.className ?? '',
             quantity: line.quantity ?? 1,

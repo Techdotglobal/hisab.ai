@@ -46,6 +46,7 @@ export interface InvoiceLineInput {
   className?: string | null
   projectId?: string | null
   classId?: string | null
+  locationId?: string | null
 }
 
 export interface InvoiceCreateInput {
