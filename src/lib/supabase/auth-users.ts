@@ -19,15 +19,44 @@ export interface AppUser {
   isActive: boolean
 }
 
-function toCompanyRole(role: string | null | undefined): CompanyRole {
+/**
+ * Every assignable role EXCEPT OWNER. Ownership is never set by the generic create/update
+ * path — only `transferCompanyOwnership` can produce an OWNER row, so a company can never
+ * end up with an extra or an accidental owner through user management.
+ */
+export const ASSIGNABLE_NON_OWNER_ROLES: CompanyRole[] = ['ADMIN', 'ACCOUNTANT', 'MANAGER', 'EMPLOYEE', 'AUDITOR']
+
+// OWNER stays accepted here for registration (new-company signup sets the first member to
+// OWNER directly). It is never reachable through user management: createAppUser and
+// updateAppUser both reject an OWNER/SUPER_ADMIN role explicitly before this is called.
+export function toCompanyRole(role: string | null | undefined): CompanyRole {
   if (role === 'ADMIN' || role === 'ACCOUNTANT' || role === 'OWNER' || role === 'MANAGER' || role === 'EMPLOYEE') {
     return role
   }
   return 'AUDITOR'
 }
 
-function publicRole(role: string | null | undefined): string {
+/** Display role for the UI. OWNER displays as Super Admin, same convention as AUDITOR/VIEWER. */
+export function publicRole(role: string | null | undefined): string {
+  if (role === 'OWNER') return 'SUPER_ADMIN'
   return role === 'AUDITOR' ? 'VIEWER' : role || 'ACCOUNTANT'
+}
+
+/** Maps a UI display role back to its stored company_role. Never produces OWNER — rejects it explicitly. */
+export function fromDisplayRole(role: string): CompanyRole {
+  if (role === 'VIEWER') return 'AUDITOR'
+  if (role === 'OWNER' || role === 'SUPER_ADMIN') {
+    throw new OwnershipGuardError('Owner can only be assigned through the ownership transfer action.')
+  }
+  if (ASSIGNABLE_NON_OWNER_ROLES.includes(role as CompanyRole)) return role as CompanyRole
+  throw new Error(`Unknown role: ${role}`)
+}
+
+export class OwnershipGuardError extends Error {
+  constructor(message = 'Use the ownership transfer action to change or deactivate the Owner.') {
+    super(message)
+    this.name = 'OwnershipGuardError'
+  }
 }
 
 export function createPasswordAuthClient() {
@@ -194,6 +223,9 @@ export async function createAppUser(input: {
   role?: string | null
   companyId: string
 }): Promise<AppUser & { createdAt: string }> {
+  if (input.role === 'OWNER' || input.role === 'SUPER_ADMIN') {
+    throw new OwnershipGuardError('A new user cannot be created as Owner — transfer ownership to an existing user instead.')
+  }
   // Flow B (invite): joins an existing tenant. Never creates a new company.
   const admin = createAdminClient()
   const { data, error } = await admin.auth.admin.createUser({
@@ -231,11 +263,32 @@ export async function updateAppUser(
   if (authError) throw authError
   if (!authUser.user.email) throw new Error('User email is missing')
 
+  // Read the actual stored role rather than the display string in auth metadata — that
+  // string is already public-mapped (e.g. SUPER_ADMIN/VIEWER) and re-deriving a company_role
+  // from it would silently mis-map on every update that doesn't explicitly pass a role.
+  const { data: currentMembership, error: membershipFetchError } = await admin
+    .from('company_users')
+    .select('role')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (membershipFetchError) throw membershipFetchError
+  const currentRole = (currentMembership?.role as CompanyRole | undefined) ?? 'ACCOUNTANT'
+
+  if (input.role === 'OWNER' || input.role === 'SUPER_ADMIN') {
+    throw new OwnershipGuardError('Owner can only be assigned through the ownership transfer action.')
+  }
+  if (currentRole === 'OWNER' && (input.role !== undefined || input.isActive === false)) {
+    throw new OwnershipGuardError()
+  }
+
+  const nextRole: CompanyRole = input.role !== undefined ? toCompanyRole(input.role) : currentRole
+
   const updateData: Parameters<typeof admin.auth.admin.updateUserById>[1] = {
     user_metadata: {
       ...(authUser.user.user_metadata ?? {}),
       full_name: input.name ?? authUser.user.user_metadata?.full_name,
-      role: publicRole(input.role ?? authUser.user.user_metadata?.role),
+      role: publicRole(nextRole),
     },
   }
   if (input.password) updateData.password = input.password
@@ -247,7 +300,7 @@ export async function updateAppUser(
     userId,
     email: authUser.user.email,
     name: input.name ?? authUser.user.user_metadata?.full_name ?? null,
-    role: input.role ?? authUser.user.user_metadata?.role ?? 'ACCOUNTANT',
+    role: nextRole,
     isActive: input.isActive ?? true,
     companyId,
   })
@@ -255,9 +308,44 @@ export async function updateAppUser(
   return getAppUser(userId, authUser.user.email)
 }
 
-export async function deleteAppUser(userId: string) {
+export async function deleteAppUser(userId: string, companyId: string) {
   const admin = createAdminClient()
+  const { data: membership, error: membershipError } = await admin
+    .from('company_users')
+    .select('role')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (membershipError) throw membershipError
+  if (membership?.role === 'OWNER') {
+    throw new OwnershipGuardError('Transfer ownership to another user before deleting the Owner.')
+  }
+
   const { error } = await admin.auth.admin.deleteUser(userId)
+  if (error) throw error
+}
+
+/**
+ * Atomically moves OWNER from the current owner to an existing, active member of the same
+ * company, and assigns the previous owner a new non-owner role in the same operation — a
+ * company is never without an owner and never has more than one. Implemented as a Postgres
+ * function (migration 080) so both row updates and the one-owner invariant check happen
+ * under a single row lock, safe against a concurrent transfer call.
+ */
+export async function transferCompanyOwnership(input: {
+  companyId: string
+  newOwnerUserId: string
+  previousOwnerNewRole: CompanyRole
+}): Promise<void> {
+  if (!ASSIGNABLE_NON_OWNER_ROLES.includes(input.previousOwnerNewRole)) {
+    throw new Error(`previousOwnerNewRole must be one of: ${ASSIGNABLE_NON_OWNER_ROLES.join(', ')}`)
+  }
+  const admin = createAdminClient()
+  const { error } = await admin.rpc('transfer_company_ownership', {
+    p_company_id: input.companyId,
+    p_new_owner_user_id: input.newOwnerUserId,
+    p_previous_owner_new_role: input.previousOwnerNewRole,
+  })
   if (error) throw error
 }
 
