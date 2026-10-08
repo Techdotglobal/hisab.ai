@@ -209,4 +209,18 @@ describe('Users page shows real company members and the Create User action', () 
   it('does not show a separate pending-invitation list mixed into the member table', () => {
     assert.doesNotMatch(page, /invitations/i)
   })
+
+  it('editing the Owner never submits role: SUPER_ADMIN — that would be guaranteed-rejected by the server', () => {
+    // Regression: u.role for the Owner's row is the display value 'SUPER_ADMIN' (publicRole('OWNER')).
+    // openEdit seeds form.role from it, so a naive save would send role: 'SUPER_ADMIN' and the Owner
+    // could never rename themselves. The body must omit role whenever the row being edited is the Owner.
+    assert.match(
+      page,
+      /const body = editing\s*\n\s*\? \(editing\.role === 'SUPER_ADMIN' \? \{ name: form\.name \} : \{ name: form\.name, role: form\.role \}\)\s*\n\s*: form/,
+    )
+  })
+
+  it('the role selector is hidden when editing the Owner, instead of showing a value not in its own option list', () => {
+    assert.match(page, /editing\?\.role === 'SUPER_ADMIN' \? \(/)
+  })
 })

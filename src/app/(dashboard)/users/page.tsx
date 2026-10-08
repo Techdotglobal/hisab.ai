@@ -81,7 +81,11 @@ export default function UsersPage() {
   async function handleSave() {
     setSaving(true)
     const url = editing ? `/api/users/${editing.id}` : '/api/users'
-    const body = editing ? { name: form.name, role: form.role } : form
+    // Owner's role is never editable here (see Transfer Ownership) — omit it so editing the
+    // Owner's own name doesn't send role: 'SUPER_ADMIN', which the server correctly rejects.
+    const body = editing
+      ? (editing.role === 'SUPER_ADMIN' ? { name: form.name } : { name: form.name, role: form.role })
+      : form
     const res = await fetch(url, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (!res.ok) {
       alert(await readApiError(res))
@@ -204,9 +208,15 @@ export default function UsersPage() {
           <Input label="Full Name" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <Input label="Email" type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editing} />
           {!editing && <Input label="Password" type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />}
-          <Select label="Role" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-            {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
-          </Select>
+          {editing?.role === 'SUPER_ADMIN' ? (
+            <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
+              Owner&apos;s role can only be changed through Transfer Ownership.
+            </div>
+          ) : (
+            <Select label="Role" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+            </Select>
+          )}
           <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 space-y-1">
             <p><strong>Admin</strong> — Full access, manage users</p>
             <p><strong>Accountant</strong> — Create & edit all financial records</p>
