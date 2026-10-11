@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, Edit2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,9 @@ import { PageHeader, SearchBar, FilterBar } from '@/components/ui/page-header'
 import { ModuleImportExportToolbar } from '@/components/import-export/ModuleImportExportToolbar'
 import { ACCOUNT_FIELDS } from '@/lib/import-export/registry/modules/accounts.fields'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Account {
   id: string; accountNo: string; fullName: string; name: string
@@ -39,7 +42,8 @@ const TYPE_COLORS: Record<string, string> = {
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ type: '', status: '', balance: '' })
+  const typeFilter = filters.type
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
@@ -60,6 +64,19 @@ export default function AccountsPage() {
   }
 
   useEffect(() => { load() }, [search, typeFilter])
+
+  const visible = useMemo(() => accounts.filter((a) => {
+    if (filters.status === 'active' && !a.isActive) return false
+    if (filters.status === 'inactive' && a.isActive) return false
+    if (filters.balance === 'nonzero' && !Number(a.balance)) return false
+    if (filters.balance === 'zero' && Number(a.balance)) return false
+    return true
+  }), [accounts, filters.status, filters.balance])
+  const exportColumns: ExportColumn<Account>[] = [
+    { header: 'Account No', value: (a) => a.accountNo }, { header: 'Name', value: (a) => a.name }, { header: 'Full Name', value: (a) => a.fullName },
+    { header: 'Parent No', value: (a) => a.parentNo }, { header: 'Account Type', value: (a) => a.accountType }, { header: 'Sub Type', value: (a) => a.subType },
+    { header: 'Status', value: (a) => a.isActive ? 'Active' : 'Inactive' }, { header: 'Balance', value: (a) => a.balance, type: 'currency' },
+  ]
 
   function openCreate() {
     setEditing(null)
@@ -95,7 +112,7 @@ export default function AccountsPage() {
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
         title="Chart of Accounts"
-        subtitle={`${accounts.length} accounts`}
+        subtitle={`${visible.length} accounts`}
         breadcrumb={[{ label: 'Accounting' }, { label: 'Chart of Accounts' }]}
         action={(
           <div className="flex items-center gap-2">
@@ -108,6 +125,7 @@ export default function AccountsPage() {
                 ...(typeFilter ? { type: typeFilter } : {}),
               }}
               onImportSuccess={load}
+              tableExport={{ filename: 'chart-of-accounts', columns: exportColumns, rows: visible }}
             />
             <Button onClick={openCreate}><Plus size={15} /> Add Account</Button>
           </div>
@@ -116,10 +134,7 @@ export default function AccountsPage() {
 
       <FilterBar>
         <SearchBar value={search} onChange={setSearch} placeholder="Search by code or name..." className="flex-1 max-w-sm" />
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-base w-auto min-w-[160px]">
-          <option value="">All Types</option>
-          {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'type', label: 'Account type', type: 'select', allLabel: 'All types', options: ACCOUNT_TYPES.map((t) => ({ value: t, label: t })) }, { key: 'status', label: 'Status', type: 'select', allLabel: 'Active & inactive', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] }, { key: 'balance', label: 'Balance', type: 'select', allLabel: 'Any balance', options: [{ value: 'nonzero', label: 'Non-zero' }, { value: 'zero', label: 'Zero' }] }]} />
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 bg-white transition-colors">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
@@ -139,7 +154,7 @@ export default function AccountsPage() {
             <tbody className="divide-y divide-slate-50">
               {loading ? Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 7 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
-              )) : accounts.length === 0 ? (
+              )) : visible.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
@@ -147,7 +162,7 @@ export default function AccountsPage() {
                     </div>
                   </td>
                 </tr>
-              ) : accounts.map((acc) => {
+              ) : visible.map((acc) => {
                 const level = getLevel(acc.accountNo)
                 const isParent = level === 0
                 return (

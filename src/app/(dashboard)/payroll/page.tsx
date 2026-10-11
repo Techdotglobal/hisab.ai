@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, CheckCircle } from 'lucide-react'
 import { formatDate, cn } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
@@ -10,6 +10,9 @@ import { Modal } from '@/components/ui/modal'
 import { Input, Select, Textarea } from '@/components/ui/input'
 import { PageHeader, FilterBar } from '@/components/ui/page-header'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Employee { id: string; name: string; salary: number; employeeNo: string }
 interface PayrollEntry {
@@ -22,6 +25,7 @@ export default function PayrollPage() {
   const formatCurrency = useFormatCurrency()
   const { currency } = useCompanyCurrency()
   const [payrolls, setPayrolls] = useState<PayrollEntry[]>([])
+  const [filters, setFilters] = useState<FilterValues>({ employee: '', status: '', period: '', paidFrom: '', paidTo: '' })
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -69,6 +73,20 @@ export default function PayrollPage() {
 
   const totalPayroll = payrolls.filter(p => p.status === 'APPROVED' || p.status === 'PAID').reduce((s, p) => s + p.netSalary, 0)
 
+  const payrollStatuses = useMemo(() => [...new Set(payrolls.map((p) => p.status))].sort(), [payrolls])
+  const visible = useMemo(() => payrolls.filter((p) => {
+    if (filters.employee && p.employee?.name !== filters.employee) return false
+    if (filters.status && p.status !== filters.status) return false
+    if (filters.period && !String(p.period ?? '').toLowerCase().includes(filters.period.toLowerCase())) return false
+    return inDateRange(p.paidAt, filters.paidFrom, filters.paidTo)
+  }), [payrolls, filters])
+  const exportColumns: ExportColumn<PayrollEntry>[] = [
+    { header: 'Payroll No', value: (p) => p.payrollNo }, { header: 'Employee No', value: (p) => p.employee?.employeeNo }, { header: 'Employee', value: (p) => p.employee?.name },
+    { header: 'Period', value: (p) => p.period }, { header: 'Basic Salary', value: (p) => p.basicSalary, type: 'currency' }, { header: 'Allowances', value: (p) => p.allowances, type: 'currency' },
+    { header: 'Deductions', value: (p) => p.deductions, type: 'currency' }, { header: 'Tax', value: (p) => p.taxAmount, type: 'currency' }, { header: 'Net Salary', value: (p) => p.netSalary, type: 'currency' },
+    { header: 'Status', value: (p) => p.status }, { header: 'Paid On', value: (p) => p.paidAt, type: 'date' },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -96,7 +114,9 @@ export default function PayrollPage() {
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 bg-white transition-colors">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="payroll" sheetName="Payroll" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'employee', label: 'Employee', type: 'select', allLabel: 'All employees', options: [...new Set(payrolls.map((p) => p.employee?.name).filter(Boolean))].sort().map((n) => ({ value: n, label: n })) }, { key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: payrollStatuses.map((x) => ({ value: x, label: x })) }, { key: 'period', label: 'Period contains', type: 'text', placeholder: 'e.g. 2026-03' }, { key: 'paidFrom', label: 'Paid from', type: 'date' }, { key: 'paidTo', label: 'Paid to', type: 'date' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -113,9 +133,9 @@ export default function PayrollPage() {
             <tbody className="divide-y divide-slate-50">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 10 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
-              )) : payrolls.length === 0 ? (
+              )) : visible.length === 0 ? (
                 <tr><td colSpan={10} className="px-4 py-16 text-center text-slate-400 text-sm">No payroll entries yet. Generate payroll for your employees.</td></tr>
-              ) : payrolls.map(p => (
+              ) : visible.map(p => (
                 <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-indigo-600 font-semibold">{p.payrollNo}</td>
                   <td className="px-4 py-3">

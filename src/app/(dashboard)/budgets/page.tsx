@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,9 @@ import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { PageHeader, FilterBar } from '@/components/ui/page-header'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Budget {
   id: string; name: string; fiscal_year: number; status: string
@@ -15,6 +18,7 @@ interface Budget {
 
 export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<Budget[]>([])
+  const [filters, setFilters] = useState<FilterValues>({ status: '', year: '' })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -43,6 +47,11 @@ export default function BudgetsPage() {
     setSaving(false)
   }
 
+  const visible = useMemo(() => budgets.filter((b) => (!filters.status || b.status === filters.status) && (!filters.year || String(b.fiscal_year) === filters.year)), [budgets, filters])
+  const exportColumns: ExportColumn<Budget>[] = [
+    { header: 'Name', value: (b) => b.name }, { header: 'Fiscal Year', value: (b) => b.fiscal_year, type: 'number' }, { header: 'Status', value: (b) => b.status },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -56,7 +65,9 @@ export default function BudgetsPage() {
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:bg-slate-50 bg-white">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="budgets" sheetName="Budgets" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: [...new Set(budgets.map((b) => b.status))].sort().map((x) => ({ value: x, label: x })) }, { key: 'year', label: 'Fiscal year', type: 'select', allLabel: 'All years', options: [...new Set(budgets.map((b) => String(b.fiscal_year)))].sort().map((x) => ({ value: x, label: x })) }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <table className="w-full data-table">
@@ -68,7 +79,7 @@ export default function BudgetsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {budgets.map(b => (
+            {visible.map(b => (
               <tr key={b.id}>
                 <td className="px-4 py-3 text-sm font-medium">{b.name}</td>
                 <td className="px-4 py-3 text-sm tabular">{b.fiscal_year}</td>

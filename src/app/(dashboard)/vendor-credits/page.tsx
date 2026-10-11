@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
 import { formatDate, formatCurrency as formatAmount } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
@@ -11,6 +11,9 @@ import { Modal } from '@/components/ui/modal'
 import { Input, Select, Textarea } from '@/components/ui/input'
 import { PageHeader, SearchBar, FilterBar } from '@/components/ui/page-header'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Vendor { id: string; name: string }
 interface Bill { id: string; billNo: string }
@@ -28,7 +31,8 @@ export default function VendorCreditsPage() {
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [bills, setBills] = useState<Bill[]>([])
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ status: '', party: '', from: '', to: '', min: '', max: '' })
+  const statusFilter = filters.status
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -71,6 +75,18 @@ export default function VendorCreditsPage() {
     setSaving(false)
   }
 
+  const visible = useMemo(() => credits.filter((r) => {
+    if (filters.party && r.vendor?.name !== filters.party) return false
+    const min = filters.min === '' ? null : Number(filters.min); const max = filters.max === '' ? null : Number(filters.max)
+    if ((min !== null && r.total < min) || (max !== null && r.total > max)) return false
+    return inDateRange(r.date, filters.from, filters.to)
+  }), [credits, filters])
+  const exportColumns: ExportColumn<VendorCredit>[] = [
+    { header: 'Credit No', value: (r) => r.creditNo }, { header: 'Supplier', value: (r) => r.vendor?.name }, { header: 'Bill', value: (r) => r.bill?.billNo }, { header: 'Date', value: (r) => r.date, type: 'date' },
+    { header: 'Currency', value: (r) => r.currency }, { header: 'Total', value: (r) => r.total, type: 'currency' }, { header: 'Applied', value: (r) => r.appliedAmount ?? 0, type: 'currency' },
+    { header: 'Remaining', value: (r) => r.balance ?? 0, type: 'currency' }, { header: 'Status', value: (r) => r.status }, { header: 'Notes', value: (r) => r.notes },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -82,14 +98,12 @@ export default function VendorCreditsPage() {
 
       <FilterBar>
         <SearchBar value={search} onChange={setSearch} placeholder="Search credit number..." className="flex-1 max-w-sm" />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-base w-auto min-w-[140px]">
-          <option value="">All Statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 bg-white transition-colors">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="vendor-credits" sheetName="Vendor Credits" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'party', label: 'Supplier', type: 'select', allLabel: 'All', options: vendors.map((x) => ({ value: x.name, label: x.name })) }, { key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: STATUSES.map((x) => ({ value: x, label: x })) }, { key: 'from', label: 'Date from', type: 'date' }, { key: 'to', label: 'Date to', type: 'date' }, { key: 'min', label: 'Min total', type: 'number' }, { key: 'max', label: 'Max total', type: 'number' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full data-table">
@@ -103,9 +117,9 @@ export default function VendorCreditsPage() {
           <tbody className="divide-y divide-slate-50">
             {loading ? (
               <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
-            ) : credits.length === 0 ? (
+            ) : visible.length === 0 ? (
               <tr><td colSpan={8} className="px-4 py-16 text-center text-slate-400 text-sm">No supplier credits found.</td></tr>
-            ) : credits.map((credit) => (
+            ) : visible.map((credit) => (
               <tr key={credit.id} className="hover:bg-slate-50/60 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs font-semibold text-indigo-600">{credit.creditNo}</td>
                 <td className="px-4 py-3 text-sm font-semibold text-slate-800">{credit.vendor?.name ?? '—'}</td>

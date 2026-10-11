@@ -20,6 +20,7 @@ import {
   type CustomerFilterValues,
 } from '@/lib/ui/customer-filters'
 import { readApiError } from '@/lib/api-client'
+import type { ExportColumn } from '@/lib/export/table-export'
 import { ModuleImportExportToolbar } from '@/components/import-export/ModuleImportExportToolbar'
 import { CUSTOMER_FIELDS } from '@/lib/import-export/registry/modules/customers.fields'
 
@@ -185,6 +186,12 @@ export default function CustomersPage() {
     load()
   }
 
+  const exportColumns: ExportColumn<Customer>[] = [
+    { header: 'Customer No', value: (c) => c.customerNo }, { header: 'Name', value: (c) => c.name }, { header: 'Email', value: (c) => c.email }, { header: 'Phone', value: (c) => c.phone },
+    { header: 'City', value: (c) => c.city }, { header: 'Country', value: (c) => c.country }, { header: 'Tax ID / VAT', value: (c) => c.taxId },
+    { header: 'Credit Limit', value: (c) => c.creditLimit, type: 'currency' }, { header: 'Payment Terms (days)', value: (c) => c.paymentTerms, type: 'number' },
+    { header: 'Outstanding Balance', value: (c) => c.outstandingBalance ?? 0, type: 'currency' }, { header: 'Status', value: (c) => c.isActive ? 'Active' : 'Inactive' },
+  ]
   const subtitle = activeFilterCount > 0
     ? `${customers.length} matching customers`
     : `${customers.length} customers`
@@ -203,6 +210,7 @@ export default function CustomersPage() {
               fields={CUSTOMER_FIELDS}
               filters={Object.fromEntries(buildQueryParams(queryFilters))}
               onImportSuccess={load}
+              tableExport={{ filename: 'customers', columns: exportColumns, rows: customers }}
             />
             <Button onClick={openCreate}><Plus size={15} /> New Customer</Button>
           </div>

@@ -1,13 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Filter, History, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, History, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { ActionDropdown } from '@/components/ui/action-dropdown'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input, Select, Textarea } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { PageHeader, SearchBar } from '@/components/ui/page-header'
+import { FilterPanel, type FilterValues } from '@/components/data-tools/filter-panel'
+import { ServerExportMenu } from '@/components/data-tools/server-export-menu'
 import { useCompanyCurrency } from '@/hooks/use-company-currency'
 import { readApiError } from '@/lib/api-client'
 import { formatCurrency } from '@/lib/utils'
@@ -55,7 +57,7 @@ export default function RecurringTransactionsPage() {
   const [items, setItems] = useState<Template[]>([])
   const [customers, setCustomers] = useState<Party[]>([]); const [vendors, setVendors] = useState<Party[]>([]); const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [workingId, setWorkingId] = useState<string | null>(null)
-  const [search, setSearch] = useState(''); const [showFilters, setShowFilters] = useState(false)
+  const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ type: '', transactionType: '', interval: '', customerId: '', vendorId: '', status: '', previousDate: '', nextDate: '' })
   const [sortBy, setSortBy] = useState<SortKey>('templateName'); const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1); const [total, setTotal] = useState(0); const limit = 20
@@ -116,7 +118,7 @@ export default function RecurringTransactionsPage() {
   }
   async function openHistory(template: Template) { setHistoryFor(template); const response = await fetch(`/api/recurring-transactions/${template.id}/history`); setHistory(response.ok ? await response.json() : []) }
   function onSort(key: SortKey) { if (sortBy === key) setSortDir((value) => value === 'asc' ? 'desc' : 'asc'); else { setSortBy(key); setSortDir('asc') }; setPage(1) }
-  function exportRows() { const params = new URLSearchParams({ sortBy, sortDir }); if (search.trim()) params.set('search', search.trim()); Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) }); window.location.assign(`/api/recurring-transactions/export?${params}`) }
+  const exportParams = useMemo(() => { const params = new URLSearchParams({ sortBy, sortDir }); if (search.trim()) params.set('search', search.trim()); Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value) }); return params }, [filters, search, sortBy, sortDir])
 
   return (
     <div className="mx-auto max-w-[1700px] space-y-4 p-4 md:p-6">
@@ -125,22 +127,23 @@ export default function RecurringTransactionsPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <SearchBar value={search} onChange={(value) => { setSearch(value); setPage(1) }} placeholder="Search by Name" className="w-full sm:w-72" />
-        <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters((value) => !value)}><Filter size={14} /> Filter</Button>
-        <Button variant="outline" onClick={exportRows}><Download size={14} /> Export</Button>
+        <ServerExportMenu endpoint="/api/recurring-transactions/export" params={exportParams} fallbackFilename="recurring-transactions" />
         <Button variant="ghost" size="icon" onClick={load} aria-label="Refresh"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /></Button>
       </div>
-      {showFilters && (
-        <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4 xl:grid-cols-8">
-          <Select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })}><option value="">All Types</option>{['REMINDER','SCHEDULED','UNSCHEDULED'].map((v) => <option key={v}>{v}</option>)}</Select>
-          <Select value={filters.transactionType} onChange={(e) => setFilters({ ...filters, transactionType: e.target.value })}><option value="">All Transactions</option>{TRANSACTION_TYPES.map((v) => <option key={v} value={v}>{label(v)}</option>)}</Select>
-          <Select value={filters.interval} onChange={(e) => setFilters({ ...filters, interval: e.target.value })}><option value="">All Intervals</option>{['DAILY','WEEKLY','MONTHLY','YEARLY','CUSTOM'].map((v) => <option key={v}>{v}</option>)}</Select>
-          <Select value={filters.customerId} onChange={(e) => setFilters({ ...filters, customerId: e.target.value })}><option value="">All Customers</option>{customers.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</Select>
-          <Select value={filters.vendorId} onChange={(e) => setFilters({ ...filters, vendorId: e.target.value })}><option value="">All Suppliers</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</Select>
-          <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}><option value="">All Statuses</option>{['ACTIVE','PAUSED','COMPLETED','ARCHIVED'].map((v) => <option key={v}>{v}</option>)}</Select>
-          <Input aria-label="Previous date" type="date" value={filters.previousDate} onChange={(e) => setFilters({ ...filters, previousDate: e.target.value })} />
-          <Input aria-label="Next date" type="date" value={filters.nextDate} onChange={(e) => setFilters({ ...filters, nextDate: e.target.value })} />
-        </div>
-      )}
+      <FilterPanel
+        applied={filters}
+        onApply={(v: FilterValues) => { setPage(1); setFilters({ type: v.type ?? '', transactionType: v.transactionType ?? '', interval: v.interval ?? '', customerId: v.customerId ?? '', vendorId: v.vendorId ?? '', status: v.status ?? '', previousDate: v.previousDate ?? '', nextDate: v.nextDate ?? '' }) }}
+        fields={[
+          { key: 'type', label: 'Type', type: 'select', allLabel: 'All types', options: ['REMINDER', 'SCHEDULED', 'UNSCHEDULED'].map((v) => ({ value: v, label: v })) },
+          { key: 'transactionType', label: 'Transaction', type: 'select', allLabel: 'All transactions', options: TRANSACTION_TYPES.map((v) => ({ value: v, label: label(v) })) },
+          { key: 'interval', label: 'Interval', type: 'select', allLabel: 'All intervals', options: ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY', 'CUSTOM'].map((v) => ({ value: v, label: v })) },
+          { key: 'customerId', label: 'Customer', type: 'select', allLabel: 'All customers', options: customers.map((v) => ({ value: v.id, label: v.name })) },
+          { key: 'vendorId', label: 'Supplier', type: 'select', allLabel: 'All suppliers', options: vendors.map((v) => ({ value: v.id, label: v.name })) },
+          { key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: ['ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED'].map((v) => ({ value: v, label: v })) },
+          { key: 'previousDate', label: 'Previous date', type: 'date' },
+          { key: 'nextDate', label: 'Next date', type: 'date' },
+        ]}
+      />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="max-h-[calc(100vh-260px)] overflow-auto">

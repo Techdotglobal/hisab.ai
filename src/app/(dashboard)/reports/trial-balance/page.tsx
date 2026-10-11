@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useFormatCurrency } from '@/hooks/use-company-currency'
+import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
+import { ReportActions } from '@/components/data-tools/report-actions'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface TBRow {
   accountNo: string
@@ -22,6 +24,7 @@ interface TBData {
 
 export default function TrialBalancePage() {
   const formatCurrency = useFormatCurrency()
+  const { currency } = useCompanyCurrency()
   const [asOf, setAsOf] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<TBData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -32,6 +35,11 @@ export default function TrialBalancePage() {
     if (res.ok) setData(await res.json())
     setLoading(false)
   }
+
+  const tbColumns: ExportColumn<TBRow>[] = [
+    { header: 'Account No', value: (r) => r.accountNo }, { header: 'Account', value: (r) => r.accountName }, { header: 'Type', value: (r) => r.canonicalType },
+    { header: `Debit (${currency})`, value: (r) => r.debit, type: 'currency' }, { header: `Credit (${currency})`, value: (r) => r.credit, type: 'currency' }, { header: `Balance (${currency})`, value: (r) => r.balance, type: 'currency' },
+  ]
 
   return (
     <div className="p-6">
@@ -47,10 +55,9 @@ export default function TrialBalancePage() {
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <button onClick={load} disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
-            {loading ? 'Loading...' : 'Generate'}
-          </button>
+                    <ReportActions loading={loading} onApply={load} onClear={() => { setAsOf(new Date().toISOString().split('T')[0]); setData(null) }} applyLabel="Generate"
+            exportRows={data?.rows ?? null} exportColumns={tbColumns} filename="trial-balance" sheetName="Trial Balance"
+            meta={['Trial Balance', `As of: ${asOf}`, `Currency: ${currency}`, data ? `Total debit: ${data.totalDebit.toFixed(2)} / Total credit: ${data.totalCredit.toFixed(2)}` : '']} />
         </div>
       </div>
 

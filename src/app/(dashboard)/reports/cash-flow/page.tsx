@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useFormatCurrency } from '@/hooks/use-company-currency'
+import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
+import { ReportActions } from '@/components/data-tools/report-actions'
+import type { ExportColumn } from '@/lib/export/table-export'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line,
@@ -24,6 +26,7 @@ function formatMonth(key: string) {
 
 export default function CashFlowPage() {
   const formatCurrency = useFormatCurrency()
+  const { currency } = useCompanyCurrency()
   const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0])
   const [to, setTo] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<CashFlowData | null>(null)
@@ -55,6 +58,12 @@ export default function CashFlowPage() {
     ...m,
     label: formatMonth(m.month),
   }))
+
+  type CfRow = CashFlowData['monthly'][number]
+  const cfColumns: ExportColumn<CfRow>[] = [
+    { header: 'Month', value: (m) => formatMonth(m.month) }, { header: `Inflows (${currency})`, value: (m) => m.inflows, type: 'currency' },
+    { header: `Outflows (${currency})`, value: (m) => m.outflows, type: 'currency' }, { header: `Net (${currency})`, value: (m) => m.net, type: 'currency' },
+  ]
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
@@ -93,13 +102,9 @@ export default function CashFlowPage() {
               className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
-          >
-            {loading ? 'Loading...' : 'Generate Report'}
-          </button>
+                    <ReportActions loading={loading} onApply={load} onClear={() => { setFrom(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]); setTo(new Date().toISOString().split('T')[0]); setData(null); setError('') }} applyLabel="Generate Report"
+            exportRows={data?.monthly ?? null} exportColumns={cfColumns} filename="cash-flow" sheetName="Cash Flow"
+            meta={['Cash Flow Statement', `Period: ${from} to ${to}`, data ? `Total inflows: ${data.totalInflows.toFixed(2)} / Total outflows: ${data.totalOutflows.toFixed(2)} / Net: ${data.netCashFlow.toFixed(2)}` : '', `Currency: ${currency}`]} />
         </div>
       </div>
 

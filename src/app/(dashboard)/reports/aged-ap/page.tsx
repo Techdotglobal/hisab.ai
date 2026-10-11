@@ -1,8 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { useFormatCurrency } from '@/hooks/use-company-currency'
+import { useMemo, useState } from 'react'
+import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
 import { formatDate } from '@/lib/utils'
+import { ReportActions } from '@/components/data-tools/report-actions'
+import type { ExportColumn } from '@/lib/export/table-export'
+import { FilterPanel, type FilterValues } from '@/components/data-tools/filter-panel'
 
 interface AgedReport {
   asOf: string
@@ -16,6 +19,8 @@ interface AgedReport {
 
 export default function AgedApPage() {
   const formatCurrency = useFormatCurrency()
+  const { currency } = useCompanyCurrency()
+  const [filters, setFilters] = useState<FilterValues>({ party: '', bucket: '', minBalance: '' })
   const [asOf, setAsOf] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<AgedReport | null>(null)
   const [loading, setLoading] = useState(false)
@@ -26,6 +31,18 @@ export default function AgedApPage() {
     if (res.ok) setData(await res.json())
     setLoading(false)
   }
+
+  type Detail = AgedReport['details'][number]
+  const visibleDetails = useMemo(() => (data?.details ?? []).filter((d) => {
+    if (filters.party && !(d.vendor?.name ?? '').toLowerCase().includes(filters.party.toLowerCase())) return false
+    if (filters.bucket && d.bucket !== filters.bucket) return false
+    if (filters.minBalance !== '' && d.balance < Number(filters.minBalance)) return false
+    return true
+  }), [data, filters])
+  const agedColumns: ExportColumn<Detail>[] = [
+    { header: 'Bill No', value: (d) => d.billNo }, { header: 'Vendor', value: (d) => d.vendor?.name }, { header: 'Due Date', value: (d) => d.dueDate, type: 'date' },
+    { header: 'Days Past Due', value: (d) => d.daysPastDue, type: 'number' }, { header: 'Bucket', value: (d) => d.bucket }, { header: `Balance (${currency})`, value: (d) => d.balance, type: 'currency' },
+  ]
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
@@ -39,13 +56,14 @@ export default function AgedApPage() {
           <label className="block text-xs font-medium text-slate-700 mb-1">As of</label>
           <input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} className="input-base" />
         </div>
-        <button onClick={load} disabled={loading} className="btn-primary px-4 py-2 rounded-xl text-sm font-semibold">
-          {loading ? 'Loading...' : 'Generate'}
-        </button>
+                <ReportActions loading={loading} onApply={load} onClear={() => { setAsOf(new Date().toISOString().split('T')[0]); setFilters({ party: '', bucket: '', minBalance: '' }); setData(null) }} applyLabel="Generate"
+          exportRows={data ? visibleDetails : null} exportColumns={agedColumns} filename="aged-ap" sheetName="Aged Payables"
+          meta={['Aged Accounts Payable', `As of: ${asOf}`, ...Object.entries(filters).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)]} />
       </div>
 
       {data && (
         <>
+          <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'party', label: 'Vendor name', type: 'text' }, { key: 'bucket', label: 'Aging bucket', type: 'select', allLabel: 'All buckets', options: Object.keys(data.buckets).map((k) => ({ value: k, label: k })) }, { key: 'minBalance', label: 'Min balance', type: 'number' }]} />
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {Object.entries(data.buckets).map(([bucket, agg]) => (
               <div key={bucket} className="bg-white rounded-xl border border-slate-200 p-4">
@@ -70,7 +88,7 @@ export default function AgedApPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {data.details.map(row => (
+                {visibleDetails.map(row => (
                   <tr key={row.id}>
                     <td className="px-4 py-2 text-xs font-mono text-indigo-600">{row.billNo}</td>
                     <td className="px-4 py-2 text-sm">{row.vendor?.name ?? '—'}</td>

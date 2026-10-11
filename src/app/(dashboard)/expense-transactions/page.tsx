@@ -1,16 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Download, Filter, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, Plus, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { ActionDropdown } from '@/components/ui/action-dropdown'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input, Select } from '@/components/ui/input'
+import { Select } from '@/components/ui/input'
 import { PageHeader, SearchBar } from '@/components/ui/page-header'
 import { useCompanyCurrency } from '@/hooks/use-company-currency'
 import { formatCurrency } from '@/lib/utils'
 import { readApiError } from '@/lib/api-client'
+import { FilterPanel, type FilterValues } from '@/components/data-tools/filter-panel'
+import { ServerExportMenu } from '@/components/data-tools/server-export-menu'
 
 type Transaction = {
   id: string
@@ -66,7 +68,6 @@ export default function ExpenseTransactionsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [type, setType] = useState('ALL')
-  const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState<SortKey>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filters, setFilters] = useState({
@@ -156,11 +157,11 @@ export default function ExpenseTransactionsPage() {
     await load()
   }
 
-  function exportRows() {
+  const exportParams = useMemo(() => {
     const params = new URLSearchParams({ type, sortBy, sortDir, ...filters })
     if (search.trim()) params.set('search', search.trim())
-    window.location.assign(`/api/expense-transactions/export?${params}`)
-  }
+    return params
+  }, [filters, search, sortBy, sortDir, type])
 
   return (
     <div className="mx-auto max-w-[1700px] space-y-4 p-4 md:p-6">
@@ -190,9 +191,6 @@ export default function ExpenseTransactionsPage() {
         >
           {TYPES.map((value) => <option key={value} value={value}>{title(value)}</option>)}
         </Select>
-        <Button variant={showFilters ? 'secondary' : 'outline'} onClick={() => setShowFilters((value) => !value)}>
-          <Filter size={14} /> Filter
-        </Button>
         <Button variant="outline" onClick={() => router.push('/bills')}>
           <span className="font-semibold">Pay Bills</span>
         </Button>
@@ -209,7 +207,7 @@ export default function ExpenseTransactionsPage() {
         <Button variant="ghost" size="icon" onClick={() => { void load() }} aria-label="Refresh">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </Button>
-        <Button variant="outline" onClick={exportRows}><Download size={14} /> Export</Button>
+        <ServerExportMenu endpoint="/api/expense-transactions/export" params={exportParams} fallbackFilename="expense-transactions" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -217,21 +215,20 @@ export default function ExpenseTransactionsPage() {
         <span className="text-xs text-slate-500">Last 12 months</span>
       </div>
 
-      {showFilters && (
-        <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4 xl:grid-cols-7">
-          <Input aria-label="Start date" type="date" value={filters.dateFrom} onChange={(event) => setFilters({ ...filters, dateFrom: event.target.value })} />
-          <Input aria-label="End date" type="date" value={filters.dateTo} onChange={(event) => setFilters({ ...filters, dateTo: event.target.value })} />
-          <Input placeholder="Payee" value={filters.payee} onChange={(event) => setFilters({ ...filters, payee: event.target.value })} />
-          <Input placeholder="Category" value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })} />
-          <Select value={filters.tax} onChange={(event) => setFilters({ ...filters, tax: event.target.value })}>
-            <option value="">All sales tax</option>
-            <option value="WITH_TAX">With tax</option>
-            <option value="NO_TAX">No tax</option>
-          </Select>
-          <Input placeholder="Min total" type="number" value={filters.minTotal} onChange={(event) => setFilters({ ...filters, minTotal: event.target.value })} />
-          <Input placeholder="Max total" type="number" value={filters.maxTotal} onChange={(event) => setFilters({ ...filters, maxTotal: event.target.value })} />
-        </div>
-      )}
+      <FilterPanel
+        applied={filters}
+        defaults={{ dateFrom: defaultDateFrom(), dateTo: new Date().toISOString().slice(0, 10), payee: '', category: '', tax: '', minTotal: '', maxTotal: '' }}
+        onApply={(values: FilterValues) => { setPage(1); setFilters({ dateFrom: values.dateFrom ?? '', dateTo: values.dateTo ?? '', payee: values.payee ?? '', category: values.category ?? '', tax: values.tax ?? '', minTotal: values.minTotal ?? '', maxTotal: values.maxTotal ?? '' }) }}
+        fields={[
+          { key: 'dateFrom', label: 'Start date', type: 'date' },
+          { key: 'dateTo', label: 'End date', type: 'date' },
+          { key: 'payee', label: 'Payee', type: 'text' },
+          { key: 'category', label: 'Category', type: 'text' },
+          { key: 'tax', label: 'Sales tax', type: 'select', allLabel: 'All sales tax', options: [{ value: 'WITH_TAX', label: 'With tax' }, { value: 'NO_TAX', label: 'No tax' }] },
+          { key: 'minTotal', label: 'Min total', type: 'number' },
+          { key: 'maxTotal', label: 'Max total', type: 'number' },
+        ]}
+      />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="max-h-[calc(100vh-300px)] overflow-auto">

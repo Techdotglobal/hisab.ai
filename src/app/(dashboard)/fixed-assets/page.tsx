@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
 import { formatDate, formatCurrency as formatAmount } from '@/lib/utils'
 import { useCompanyCurrency } from '@/hooks/use-company-currency'
@@ -10,6 +10,9 @@ import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { PageHeader, FilterBar } from '@/components/ui/page-header'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Asset {
   id: string; asset_no: string; name: string; purchase_date: string
@@ -19,6 +22,7 @@ interface Asset {
 export default function FixedAssetsPage() {
   const { currency } = useCompanyCurrency()
   const [assets, setAssets] = useState<Asset[]>([])
+  const [filters, setFilters] = useState<FilterValues>({ status: '', from: '', to: '', minCost: '', maxCost: '' })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -48,6 +52,19 @@ export default function FixedAssetsPage() {
     setSaving(false)
   }
 
+  const assetStatuses = useMemo(() => [...new Set(assets.map((a) => a.status))].sort(), [assets])
+  const visible = useMemo(() => assets.filter((a) => {
+    if (filters.status && a.status !== filters.status) return false
+    if (filters.minCost !== '' && a.purchase_cost < Number(filters.minCost)) return false
+    if (filters.maxCost !== '' && a.purchase_cost > Number(filters.maxCost)) return false
+    return inDateRange(a.purchase_date, filters.from, filters.to)
+  }), [assets, filters])
+  const exportColumns: ExportColumn<Asset>[] = [
+    { header: 'Asset No', value: (a) => a.asset_no }, { header: 'Name', value: (a) => a.name }, { header: 'Purchase Date', value: (a) => a.purchase_date, type: 'date' },
+    { header: 'Purchase Cost', value: (a) => a.purchase_cost, type: 'currency' }, { header: 'Accumulated Depreciation', value: (a) => a.accumulated_depreciation, type: 'currency' },
+    { header: 'Net Book Value', value: (a) => a.purchase_cost - a.accumulated_depreciation, type: 'currency' }, { header: 'Status', value: (a) => a.status },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -61,7 +78,9 @@ export default function FixedAssetsPage() {
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:bg-slate-50 bg-white">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="fixed-assets" sheetName="Fixed Assets" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: assetStatuses.map((x) => ({ value: x, label: x })) }, { key: 'from', label: 'Purchased from', type: 'date' }, { key: 'to', label: 'Purchased to', type: 'date' }, { key: 'minCost', label: 'Min cost', type: 'number' }, { key: 'maxCost', label: 'Max cost', type: 'number' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <table className="w-full data-table">
@@ -73,7 +92,7 @@ export default function FixedAssetsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {assets.map(a => (
+            {visible.map(a => (
               <tr key={a.id}>
                 <td className="px-4 py-3 font-mono text-xs text-indigo-600">{a.asset_no}</td>
                 <td className="px-4 py-3 text-sm">{a.name}</td>

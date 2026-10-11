@@ -5,6 +5,8 @@ import { Upload, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { FieldDefinition } from '@/lib/import-export/types'
 import { ExportButton } from './ExportButton'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import type { ExportColumn } from '@/lib/export/table-export'
 import { ImportWizard } from './ImportWizard'
 
 interface ModuleImportExportToolbarProps {
@@ -13,6 +15,8 @@ interface ModuleImportExportToolbarProps {
   fields: FieldDefinition[]
   filters?: Record<string, string>
   onImportSuccess?: () => void
+  /** Filtered dataset shown in the page table; exported as-is (all pages) to CSV/XLSX. */
+  tableExport?: { filename: string; columns: ExportColumn<any>[]; rows: any[]; meta?: string[] } // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 export function ModuleImportExportToolbar({
@@ -21,6 +25,7 @@ export function ModuleImportExportToolbar({
   fields,
   filters = {},
   onImportSuccess,
+  tableExport,
 }: ModuleImportExportToolbarProps) {
   const [importOpen, setImportOpen] = useState(false)
   const [importMenuOpen, setImportMenuOpen] = useState(false)
@@ -60,7 +65,14 @@ export function ModuleImportExportToolbar({
             </>
           )}
         </div>
-        <ExportButton moduleKey={moduleKey} filters={filters} />
+        {tableExport ? (
+          <>
+            <ExportMenu filename={tableExport.filename} columns={tableExport.columns} rows={tableExport.rows} meta={tableExport.meta} sheetName={moduleLabel} />
+            <ExportButton moduleKey={moduleKey} mode="templates" />
+          </>
+        ) : (
+          <ExportButton moduleKey={moduleKey} filters={filters} />
+        )}
       </div>
 
       <ImportWizard

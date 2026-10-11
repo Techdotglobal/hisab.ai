@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useFormatCurrency } from '@/hooks/use-company-currency'
+import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
+import { ReportActions } from '@/components/data-tools/report-actions'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface BSData {
   asOf: string
@@ -38,6 +40,7 @@ function Section({ title, items, total, color }: {
 
 export default function BalanceSheetPage() {
   const formatCurrency = useFormatCurrency()
+  const { currency } = useCompanyCurrency()
   const [asOf, setAsOf] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<BSData | null>(null)
   const [loading, setLoading] = useState(false)
@@ -48,6 +51,20 @@ export default function BalanceSheetPage() {
     if (res.ok) setData(await res.json())
     setLoading(false)
   }
+
+  type BsRow = { section: string; accountNo: string; account: string; balance: number }
+  const bsRows: BsRow[] | null = data ? [
+    ...data.assets.items.filter((i) => i.balance !== 0).map((i) => ({ section: 'Assets', accountNo: i.accountNo, account: i.name, balance: i.balance })),
+    { section: 'Assets', accountNo: '', account: 'Total Assets', balance: data.assets.total },
+    ...data.liabilities.items.filter((i) => i.balance !== 0).map((i) => ({ section: 'Liabilities', accountNo: i.accountNo, account: i.name, balance: i.balance })),
+    { section: 'Liabilities', accountNo: '', account: 'Total Liabilities', balance: data.liabilities.total },
+    ...data.equity.items.filter((i) => i.balance !== 0).map((i) => ({ section: 'Equity', accountNo: i.accountNo, account: i.name, balance: i.balance })),
+    { section: 'Equity', accountNo: '', account: 'Total Equity', balance: data.equity.total },
+    { section: 'Summary', accountNo: '', account: 'Total Liabilities & Equity', balance: data.totalLiabilitiesAndEquity },
+  ] : null
+  const bsColumns: ExportColumn<BsRow>[] = [
+    { header: 'Section', value: (r) => r.section }, { header: 'Account No', value: (r) => r.accountNo }, { header: 'Account', value: (r) => r.account }, { header: `Balance (${currency})`, value: (r) => r.balance, type: 'currency' },
+  ]
 
   return (
     <div className="p-6">
@@ -63,10 +80,9 @@ export default function BalanceSheetPage() {
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <button onClick={load} disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
-            {loading ? 'Loading...' : 'Generate'}
-          </button>
+                    <ReportActions loading={loading} onApply={load} onClear={() => { setAsOf(new Date().toISOString().split('T')[0]); setData(null) }} applyLabel="Generate"
+            exportRows={bsRows} exportColumns={bsColumns} filename="balance-sheet" sheetName="Balance Sheet"
+            meta={['Balance Sheet', `As of: ${asOf}`, `Currency: ${currency}`]} />
         </div>
       </div>
 

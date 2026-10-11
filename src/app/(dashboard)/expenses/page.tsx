@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, Upload } from 'lucide-react'
 import { formatDate, formatCurrency as formatAmount, cn } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
@@ -12,6 +12,9 @@ import { Input, Select } from '@/components/ui/input'
 import { PageHeader, SearchBar, FilterBar } from '@/components/ui/page-header'
 import { CsvImportModal } from '@/components/ui/csv-import-modal'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Account { id: string; accountNo: string; name: string }
 interface Expense {
@@ -29,7 +32,8 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ status: '', category: '', from: '', to: '', min: '', max: '' })
+  const statusFilter = filters.status
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -126,6 +130,18 @@ export default function ExpensesPage() {
   const totalAmt = expenses.reduce((s, e) => s + e.total, 0)
   const pending = expenses.filter(e => e.status === 'PENDING').length
 
+  const visible = useMemo(() => expenses.filter((e) => {
+    if (filters.category && e.category !== filters.category) return false
+    if (filters.min !== '' && e.total < Number(filters.min)) return false
+    if (filters.max !== '' && e.total > Number(filters.max)) return false
+    return inDateRange(e.date, filters.from, filters.to)
+  }), [expenses, filters])
+  const exportColumns: ExportColumn<Expense>[] = [
+    { header: 'Expense No', value: (e) => e.expenseNo }, { header: 'Date', value: (e) => e.date, type: 'date' }, { header: 'Description', value: (e) => e.description },
+    { header: 'Category', value: (e) => e.category }, { header: 'Currency', value: (e) => e.currency }, { header: 'Tax Amount', value: (e) => e.taxAmount, type: 'currency' },
+    { header: 'Total', value: (e) => e.total, type: 'currency' }, { header: 'Status', value: (e) => e.status },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -142,14 +158,12 @@ export default function ExpensesPage() {
 
       <FilterBar>
         <SearchBar value={search} onChange={setSearch} placeholder="Search expenses..." className="flex-1 max-w-sm" />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-base w-auto min-w-[130px]">
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 bg-white transition-colors">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="expenses" sheetName="Expenses" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: STATUSES.map((x) => ({ value: x, label: x })) }, { key: 'category', label: 'Category', type: 'select', allLabel: 'All categories', options: CATEGORIES.map((x) => ({ value: x, label: x })) }, { key: 'from', label: 'Date from', type: 'date' }, { key: 'to', label: 'Date to', type: 'date' }, { key: 'min', label: 'Min total', type: 'number' }, { key: 'max', label: 'Max total', type: 'number' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -164,9 +178,9 @@ export default function ExpensesPage() {
             <tbody className="divide-y divide-slate-50">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 7 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
-              )) : expenses.length === 0 ? (
+              )) : visible.length === 0 ? (
                 <tr><td colSpan={7} className="px-4 py-16 text-center text-slate-400 text-sm">No expenses found.</td></tr>
-              ) : expenses.map(e => (
+              ) : visible.map(e => (
                 <tr key={e.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-indigo-600">{e.expenseNo}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{formatDate(e.date)}</td>

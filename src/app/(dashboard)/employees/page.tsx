@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, Edit2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
@@ -12,6 +12,9 @@ import { PageHeader, SearchBar, FilterBar } from '@/components/ui/page-header'
 import { ModuleImportExportToolbar } from '@/components/import-export/ModuleImportExportToolbar'
 import { EMPLOYEE_FIELDS } from '@/lib/import-export/registry/modules/employees.fields'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Employee {
   id: string; employeeNo: string; name: string; email?: string; phone?: string
@@ -24,6 +27,7 @@ export default function EmployeesPage() {
   const { currency } = useCompanyCurrency()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ department: '', status: '', salaryType: '', joinedFrom: '', joinedTo: '' })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
@@ -69,6 +73,18 @@ export default function EmployeesPage() {
     setSaving(false)
   }
 
+  const departments = useMemo(() => [...new Set(employees.map((e) => e.department).filter(Boolean) as string[])].sort(), [employees])
+  const visible = useMemo(() => employees.filter((e) => {
+    if (filters.department && e.department !== filters.department) return false
+    if (filters.status && (filters.status === 'active') !== e.isActive) return false
+    if (filters.salaryType && e.salaryType !== filters.salaryType) return false
+    return inDateRange(e.joiningDate, filters.joinedFrom, filters.joinedTo)
+  }), [employees, filters])
+  const exportColumns: ExportColumn<Employee>[] = [
+    { header: 'Employee No', value: (e) => e.employeeNo }, { header: 'Name', value: (e) => e.name }, { header: 'Email', value: (e) => e.email }, { header: 'Phone', value: (e) => e.phone },
+    { header: 'Department', value: (e) => e.department }, { header: 'Position', value: (e) => e.position }, { header: 'Joining Date', value: (e) => e.joiningDate, type: 'date' },
+    { header: 'Salary', value: (e) => e.salary, type: 'currency' }, { header: 'Salary Type', value: (e) => e.salaryType }, { header: 'Status', value: (e) => e.isActive ? 'Active' : 'Inactive' },
+  ]
   const active = employees.filter(e => e.isActive).length
   const totalPayroll = employees.filter(e => e.isActive).reduce((s, e) => s + e.salary, 0)
 
@@ -86,6 +102,7 @@ export default function EmployeesPage() {
               fields={EMPLOYEE_FIELDS}
               filters={search ? { search } : {}}
               onImportSuccess={load}
+              tableExport={{ filename: 'employees', columns: exportColumns, rows: visible }}
             />
             <Button onClick={openCreate}><Plus size={15} /> New Employee</Button>
           </div>
@@ -112,6 +129,7 @@ export default function EmployeesPage() {
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'department', label: 'Department', type: 'select', allLabel: 'All departments', options: departments.map((d) => ({ value: d, label: d })) }, { key: 'status', label: 'Status', type: 'select', allLabel: 'Active & inactive', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] }, { key: 'salaryType', label: 'Salary type', type: 'select', allLabel: 'All types', options: [{ value: 'MONTHLY', label: 'Monthly' }, { value: 'HOURLY', label: 'Hourly' }] }, { key: 'joinedFrom', label: 'Joined from', type: 'date' }, { key: 'joinedTo', label: 'Joined to', type: 'date' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -126,9 +144,9 @@ export default function EmployeesPage() {
             <tbody className="divide-y divide-slate-50">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 9 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
-              )) : employees.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-16 text-center text-slate-400 text-sm">No employees yet.</td></tr>
-              ) : employees.map(e => (
+              )) : visible.length === 0 ? (
+                <tr><td colSpan={9} className="px-4 py-16 text-center text-slate-400 text-sm">No employees match.</td></tr>
+              ) : visible.map(e => (
                 <tr key={e.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{e.employeeNo}</td>
                   <td className="px-4 py-3">

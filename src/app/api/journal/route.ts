@@ -28,6 +28,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const search = (searchParams.get('search') ?? '').trim()
     const status = (searchParams.get('status') ?? '').trim()
+    const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+    const dateFromRaw = searchParams.get('dateFrom') ?? ''
+    const dateToRaw = searchParams.get('dateTo') ?? ''
+    const dateFrom = ISO_DAY.test(dateFromRaw) ? dateFromRaw : ''
+    const dateTo = ISO_DAY.test(dateToRaw) ? dateToRaw : ''
     const page = Math.max(1, Math.floor(Number(searchParams.get('page')) || 1))
     const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(searchParams.get('pageSize')) || DEFAULT_PAGE_SIZE)))
     const client = createAdminClient()
@@ -56,6 +61,8 @@ export async function GET(request: Request) {
       .order('id', { ascending: false })
 
     if (status) query = query.eq('status', status)
+    if (dateFrom) query = query.gte('date', dateFrom)
+    if (dateTo) query = query.lte('date', dateTo)
     if (safeSearch) query = query.or(`entry_no.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
 
     const from = (page - 1) * pageSize
@@ -71,6 +78,8 @@ export async function GET(request: Request) {
       if (error.code !== 'PGRST103') throw error
       let countQuery = client.from('journal_entries').select('id', { count: 'exact', head: true }).eq('company_id', companyId).is('deleted_at', null)
       if (status) countQuery = countQuery.eq('status', status)
+      if (dateFrom) countQuery = countQuery.gte('date', dateFrom)
+      if (dateTo) countQuery = countQuery.lte('date', dateTo)
       if (safeSearch) countQuery = countQuery.or(`entry_no.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`)
       const countOnly = await countQuery
       if (countOnly.error) throw countOnly.error

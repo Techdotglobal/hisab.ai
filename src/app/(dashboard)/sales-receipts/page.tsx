@@ -1,11 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
 import { formatDate, formatCurrency as formatAmount, cn } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
 import { ALLOWED_CURRENCIES } from '@/lib/currency/constants'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { Input, Select, Textarea } from '@/components/ui/input'
@@ -32,6 +35,7 @@ export default function SalesReceiptsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [items, setItems] = useState<InventoryItem[]>([])
   const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ status: '', party: '', from: '', to: '', min: '', max: '' })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -92,6 +96,17 @@ export default function SalesReceiptsPage() {
     setSaving(false)
   }
 
+  const visible = useMemo(() => receipts.filter((r) => {
+    if (filters.party && r.customer?.name !== filters.party) return false
+    const min = filters.min === '' ? null : Number(filters.min); const max = filters.max === '' ? null : Number(filters.max)
+    if ((min !== null && r.total < min) || (max !== null && r.total > max)) return false
+    return inDateRange(r.date, filters.from, filters.to)
+  }), [receipts, filters])
+  const exportColumns: ExportColumn<SalesReceipt>[] = [
+    { header: 'Receipt No', value: (r) => r.receiptNo }, { header: 'Customer', value: (r) => r.customer?.name }, { header: 'Date', value: (r) => r.date, type: 'date' },
+    { header: 'Payment Method', value: (r) => r.paymentMethod }, { header: 'Currency', value: (r) => r.currency }, { header: 'Total', value: (r) => r.total, type: 'currency' },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -106,7 +121,9 @@ export default function SalesReceiptsPage() {
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 bg-white transition-colors">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="sales-receipts" sheetName="Sales Receipts" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'party', label: 'Customer', type: 'select', allLabel: 'All', options: customers.map((x) => ({ value: x.name, label: x.name })) }, { key: 'from', label: 'Date from', type: 'date' }, { key: 'to', label: 'Date to', type: 'date' }, { key: 'min', label: 'Min total', type: 'number' }, { key: 'max', label: 'Max total', type: 'number' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -121,9 +138,9 @@ export default function SalesReceiptsPage() {
             <tbody className="divide-y divide-slate-50">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 5 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
-              )) : receipts.length === 0 ? (
+              )) : visible.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-16 text-center text-slate-400 text-sm">No sales receipts found.</td></tr>
-              ) : receipts.map(receipt => (
+              ) : visible.map(receipt => (
                 <tr key={receipt.id} className="hover:bg-slate-50/60 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-indigo-600">{receipt.receiptNo}</td>
                   <td className="px-4 py-3 text-sm text-slate-700">{receipt.customer?.name ?? '—'}</td>

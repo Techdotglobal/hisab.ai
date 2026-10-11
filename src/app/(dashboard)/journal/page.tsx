@@ -6,6 +6,10 @@ import { formatDate } from '@/lib/utils'
 import { useFormatCurrency } from '@/hooks/use-company-currency'
 import { CsvImportModal } from '@/components/ui/csv-import-modal'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, type FilterValues } from '@/components/data-tools/filter-panel'
+import { fetchAllPages } from '@/lib/export/fetch-all-pages'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Account { id: string; accountNo: string; name: string; accountType: string }
 interface CostCenter { id: string; code: string; name: string }
@@ -31,6 +35,7 @@ export default function JournalPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
   const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ status: '', dateFrom: '', dateTo: '' })
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -41,10 +46,38 @@ export default function JournalPage() {
   const [error, setError] = useState('')
   const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], description: '', reference: '', lines: [{ ...EMPTY_LINE }, { ...EMPTY_LINE }] })
 
+  function buildFilterParams(): Record<string, string> {
+    const out: Record<string, string> = {}
+    if (search) out.search = search
+    if (filters.status) out.status = filters.status
+    if (filters.dateFrom) out.dateFrom = filters.dateFrom
+    if (filters.dateTo) out.dateTo = filters.dateTo
+    return out
+  }
+
+  async function loadAllForExport() {
+    return fetchAllPages<JournalEntry>('/api/journal', new URLSearchParams(buildFilterParams()))
+  }
+
+  // One row per journal line so debits/credits and accounts are visible; header-only entries get a single row.
+  type JournalExportRow = { entry: JournalEntry; line: JournalEntry['lines'][number] | null }
+  const journalExportColumns: ExportColumn<JournalExportRow>[] = [
+    { header: 'Entry No', value: (r) => r.entry.entryNo }, { header: 'Date', value: (r) => r.entry.date, type: 'date' }, { header: 'Status', value: (r) => r.entry.status },
+    { header: 'Reference', value: (r) => r.entry.reference }, { header: 'Entry Description', value: (r) => r.entry.description },
+    { header: 'Account No', value: (r) => r.line?.account?.accountNo }, { header: 'Account', value: (r) => r.line?.account?.name }, { header: 'Line Description', value: (r) => r.line?.description },
+    { header: 'Cost Center', value: (r) => r.line?.costCenter?.name },
+    { header: 'Debit', value: (r) => r.line ? r.line.debit : r.entry.totalDebit, type: 'currency' }, { header: 'Credit', value: (r) => r.line ? r.line.credit : r.entry.totalCredit, type: 'currency' },
+    { header: 'Created By', value: (r) => r.entry.createdBy?.name },
+  ]
+  async function loadExportRows(): Promise<JournalExportRow[]> {
+    const all = await loadAllForExport()
+    return all.flatMap((entry): JournalExportRow[] => entry.lines?.length ? entry.lines.map((line) => ({ entry, line })) : [{ entry, line: null }])
+  }
+
   async function load() {
     setLoading(true)
     const params = new URLSearchParams({ page: String(page) })
-    if (search) params.set('search', search)
+    for (const [key, value] of Object.entries(buildFilterParams())) params.set(key, value)
     const [entRes, accRes, ccRes] = await Promise.all([
       fetch(`/api/journal?${params}`),
       fetch('/api/accounts'),
@@ -67,7 +100,7 @@ export default function JournalPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [search, page])
+  useEffect(() => { load() }, [search, page, filters])
 
   function updateSearch(value: string) {
     // Batched with setSearch so the [search, page] effect above fires once with both
@@ -128,6 +161,7 @@ export default function JournalPage() {
           <p className="text-gray-500 text-sm mt-0.5">{total} entries</p>
         </div>
         <div className="flex items-center gap-2">
+          <ExportMenu filename="journal-entries" sheetName="Journal Entries" columns={journalExportColumns} rows={loadExportRows} meta={['Journal Entries', ...Object.entries(buildFilterParams()).map(([k, v]) => `${k}: ${v}`)]} />
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors">
             <Upload size={15} /> Import CSV
           </button>
@@ -143,6 +177,10 @@ export default function JournalPage() {
           <input value={search} onChange={(e) => updateSearch(e.target.value)} placeholder="Search entries..."
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
+      </div>
+
+      <div className="mb-4">
+        <FilterPanel applied={filters} onApply={(v) => { setPage(1); setFilters(v) }} fields={[{ key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: [{ value: 'DRAFT', label: 'Draft' }, { value: 'POSTED', label: 'Posted' }] }, { key: 'dateFrom', label: 'Date from', type: 'date' }, { key: 'dateTo', label: 'Date to', type: 'date' }]} />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

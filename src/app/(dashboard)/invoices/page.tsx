@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { Input, Select, Textarea } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
+import { ServerExportMenu } from '@/components/data-tools/server-export-menu'
 import {
   DEFAULT_INVOICE_FILTERS,
   INVOICE_FILTERS_STORAGE_KEY,
@@ -39,6 +40,7 @@ interface InvoiceLine {
   className?: string
   projectId?: string
   classId?: string
+  locationId?: string
   taxRateId?: string
 }
 interface Invoice {
@@ -79,6 +81,7 @@ const EMPTY_LINE: InvoiceLine = {
   className: '',
   projectId: '',
   classId: '',
+  locationId: '',
   taxRateId: '',
 }
 
@@ -180,6 +183,23 @@ export default function InvoicesPage() {
     }
   }
 
+  const exportParams = (() => {
+    const params = new URLSearchParams()
+    if (appliedFilters.search) params.set('search', appliedFilters.search)
+    if (appliedFilters.statusFilter) params.set('status', appliedFilters.statusFilter)
+    if (appliedFilters.zatcaFilter) params.set('zatcaStatus', appliedFilters.zatcaFilter)
+    if (appliedFilters.typeFilter) params.set('invoiceType', appliedFilters.typeFilter)
+    if (appliedFilters.customerFilter) params.set('customerId', appliedFilters.customerFilter)
+    if (appliedFilters.datePreset) params.set('datePreset', appliedFilters.datePreset)
+    if (appliedFilters.datePreset === 'custom') {
+      if (appliedFilters.dateFrom) params.set('dateFrom', appliedFilters.dateFrom)
+      if (appliedFilters.dateTo) params.set('dateTo', appliedFilters.dateTo)
+    }
+    params.set('sortBy', appliedFilters.sortBy)
+    params.set('sortDir', appliedFilters.sortDir)
+    return params
+  })()
+
   async function load() {
     setLoading(true)
     const params = new URLSearchParams()
@@ -252,6 +272,7 @@ export default function InvoicesPage() {
         description: line.description,
         projectId: line.projectId || null,
         classId: line.classId || null,
+        locationId: line.locationId || null,
         projectService: line.projectService || null,
         className: line.className || null,
         quantity: line.quantity,
@@ -411,11 +432,12 @@ export default function InvoicesPage() {
       taxCalculationMethod: full.taxCalculationMethod ?? 'TAX_EXCLUSIVE',
       isRecurring: full.isRecurring ?? false,
       lines: (full.lines ?? []).length > 0
-        ? full.lines.map((line: InvoiceLine & { taxRateId?: string; itemName?: string; projectService?: string; className?: string; projectId?: string; classId?: string }) => ({
+        ? full.lines.map((line: InvoiceLine & { taxRateId?: string; itemName?: string; projectService?: string; className?: string; projectId?: string; classId?: string; locationId?: string }) => ({
             itemName: line.itemName ?? '',
             description: line.description ?? '',
             projectId: line.projectId ?? '',
             classId: line.classId ?? '',
+            locationId: line.locationId ?? '',
             projectService: line.projectService ?? '',
             className: line.className ?? '',
             quantity: line.quantity ?? 1,
@@ -589,7 +611,8 @@ export default function InvoicesPage() {
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-end border-b border-slate-100 px-4 py-2">
+        <div className="flex items-center justify-end gap-2 border-b border-slate-100 px-4 py-2">
+          <ServerExportMenu endpoint="/api/invoices/export" params={exportParams} fallbackFilename="invoices" />
           <button
             type="button"
             onClick={load}

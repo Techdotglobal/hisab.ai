@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
+import { ReportActions } from '@/components/data-tools/report-actions'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface PLData {
   period: { from: string; to: string }
@@ -29,6 +31,20 @@ export default function ProfitLossPage() {
     if (res.ok) setData(await res.json())
     setLoading(false)
   }
+
+  type PlRow = { section: string; item: string; amount: number }
+  const plRows: PlRow[] | null = data ? [
+    ...data.revenue.byAccount.map((a) => ({ section: 'Income', item: a.name, amount: a.amount })),
+    { section: 'Income', item: 'Total Revenue', amount: data.revenue.total },
+    { section: 'Cost of Sales', item: 'Total Cost of Sales', amount: data.cogs.total },
+    { section: 'Summary', item: 'Gross Profit', amount: data.grossProfit },
+    ...data.expenses.byAccount.map((a) => ({ section: 'Operating Expenses', item: a.name, amount: a.amount })),
+    { section: 'Operating Expenses', item: 'Total Expenses', amount: data.expenses.total },
+    { section: 'Summary', item: 'Net Profit / (Loss)', amount: data.netProfit },
+  ] : null
+  const plColumns: ExportColumn<PlRow>[] = [
+    { header: 'Section', value: (r) => r.section }, { header: 'Item', value: (r) => r.item }, { header: `Amount (${currency})`, value: (r) => r.amount, type: 'currency' },
+  ]
 
   const chartData = data ? [
     { name: 'Revenue', value: data.revenue.total, fill: '#22c55e' },
@@ -56,10 +72,9 @@ export default function ProfitLossPage() {
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <button onClick={load} disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
-            {loading ? 'Loading...' : 'Generate Report'}
-          </button>
+                    <ReportActions loading={loading} onApply={load} onClear={() => { setFrom(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]); setTo(new Date().toISOString().split('T')[0]); setData(null) }} applyLabel="Generate Report"
+            exportRows={plRows} exportColumns={plColumns} filename="profit-and-loss" sheetName="Profit & Loss"
+            meta={['Profit & Loss Statement', `Period: ${from} to ${to}`, `Currency: ${currency}`]} />
         </div>
       </div>
 

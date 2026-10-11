@@ -140,15 +140,21 @@ export async function listExpenseTransactions(companyId: string, requestUrl: str
   return { items: items.slice((page - 1) * limit, page * limit), total, page, limit }
 }
 
-function csvCell(value: unknown) {
-  const text = value == null ? '' : String(value)
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
-}
-
+/** Complete filtered dataset (every page), as a header row + data rows. */
 export async function exportExpenseTransactions(companyId: string, requestUrl: string) {
-  const url = new URL(requestUrl); url.searchParams.set('page', '1'); url.searchParams.set('limit', '100')
-  const result = await listExpenseTransactions(companyId, url.toString())
+  const url = new URL(requestUrl)
+  const limit = 100
+  const rows: Awaited<ReturnType<typeof listExpenseTransactions>>['items'] = []
+  let page = 1
+  let total = 0
+  do {
+    url.searchParams.set('page', String(page)); url.searchParams.set('limit', String(limit))
+    const result = await listExpenseTransactions(companyId, url.toString())
+    rows.push(...result.items)
+    total = result.total
+    page += 1
+  } while (rows.length < total && page <= 1000)
   const headers = ['Date', 'Type', 'No.', 'Payee', 'Category', 'Total Before Sales Tax', 'Sales Tax', 'Total', 'Currency', 'Status']
-  const body = result.items.map((item) => [item.date, item.type, item.reference, item.payee, item.category, item.subtotal, item.taxAmount, item.total, item.currency, item.status].map(csvCell).join(','))
-  return `\uFEFF${headers.map(csvCell).join(',')}\r\n${body.join('\r\n')}`
+  const body = rows.map((item) => [item.date, item.type, item.reference, item.payee, item.category, item.subtotal, item.taxAmount, item.total, item.currency, item.status])
+  return { headers, rows: body }
 }

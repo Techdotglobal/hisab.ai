@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, Upload, ArrowLeftRight } from 'lucide-react'
 import { formatDate, formatCurrency as formatAmount, cn } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
@@ -11,6 +11,9 @@ import { Modal } from '@/components/ui/modal'
 import { Input, Select, Textarea } from '@/components/ui/input'
 import { PageHeader, FilterBar } from '@/components/ui/page-header'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 type Tab = 'accounts' | 'transactions' | 'reconciliation' | 'transfers' | 'cheques'
 
@@ -54,6 +57,7 @@ export default function BankingPage() {
   const [transfers, setTransfers] = useState<Transfer[]>([])
   const [cheques, setCheques] = useState<Cheque[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState('')
+  const [txnFilters, setTxnFilters] = useState<FilterValues>({ type: '', status: '', from: '', to: '' })
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [showTxnModal, setShowTxnModal] = useState(false)
   const [showReconModal, setShowReconModal] = useState(false)
@@ -192,6 +196,21 @@ export default function BankingPage() {
 
   const totalBalance = accounts.filter((a) => a.isActive).reduce((s, a) => s + a.currentBalance, 0)
 
+  const visibleTransactions = useMemo(() => transactions.filter((t) => {
+    if (txnFilters.type && t.type !== txnFilters.type) return false
+    if (txnFilters.status && t.status !== txnFilters.status) return false
+    return inDateRange(t.transactionDate, txnFilters.from, txnFilters.to)
+  }), [transactions, txnFilters])
+  const accountExportColumns: ExportColumn<BankAccount>[] = [
+    { header: 'Name', value: (a) => a.name }, { header: 'Bank', value: (a) => a.bankName }, { header: 'Account Number', value: (a) => a.accountNumber }, { header: 'Type', value: (a) => a.accountType },
+    { header: 'Currency', value: (a) => a.currency }, { header: 'Balance', value: (a) => a.currentBalance, type: 'currency' }, { header: 'Status', value: (a) => a.isActive ? 'Active' : 'Inactive' },
+  ]
+  const txnExportColumns: ExportColumn<BankTransaction>[] = [
+    { header: 'Date', value: (t) => t.transactionDate, type: 'date' }, { header: 'Account', value: (t) => t.bankAccount?.name }, { header: 'Description', value: (t) => t.description },
+    { header: 'Reference', value: (t) => t.reference }, { header: 'Type', value: (t) => t.type }, { header: 'Currency', value: (t) => t.bankAccount?.currency },
+    { header: 'Amount', value: (t) => t.amount, type: 'currency' }, { header: 'Status', value: (t) => t.status },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -231,7 +250,10 @@ export default function BankingPage() {
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-50 bg-white transition-colors">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        {tab === 'accounts' && <ExportMenu filename="bank-accounts" sheetName="Bank Accounts" columns={accountExportColumns} rows={accounts} />}
+        {tab === 'transactions' && <ExportMenu filename="bank-transactions" sheetName="Bank Transactions" columns={txnExportColumns} rows={visibleTransactions} meta={['Bank Transactions', `Account: ${accounts.find((a) => a.id === selectedAccountId)?.name ?? 'All accounts'}`]} />}
       </FilterBar>
+      {tab === 'transactions' && <FilterPanel applied={txnFilters} onApply={setTxnFilters} fields={[{ key: 'type', label: 'Type', type: 'select', allLabel: 'All types', options: [...new Set(transactions.map((t) => t.type))].sort().map((x) => ({ value: x, label: x })) }, { key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: [...new Set(transactions.map((t) => t.status))].sort().map((x) => ({ value: x, label: x })) }, { key: 'from', label: 'Date from', type: 'date' }, { key: 'to', label: 'Date to', type: 'date' }]} />}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {tab === 'accounts' && (
@@ -257,7 +279,7 @@ export default function BankingPage() {
           <table className="w-full data-table">
             <thead><tr className="border-b border-slate-100">{['Date', 'Account', 'Description', 'Type', 'Amount', 'Status'].map((h) => <th key={h} className="px-4 py-3 text-[11px] font-semibold text-slate-400 uppercase text-left">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-50">
-              {transactions.map((t) => (
+              {visibleTransactions.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50/60">
                   <td className="px-4 py-3 text-xs text-slate-500">{formatDate(t.transactionDate)}</td>
                   <td className="px-4 py-3 text-sm text-slate-700">{t.bankAccount?.name ?? '—'}</td>

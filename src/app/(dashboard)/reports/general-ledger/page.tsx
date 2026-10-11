@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { formatDate } from '@/lib/utils'
-import { useFormatCurrency } from '@/hooks/use-company-currency'
+import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
+import { ReportActions } from '@/components/data-tools/report-actions'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Account { id: string; accountNo: string; name: string }
 interface LedgerEntry {
@@ -14,10 +16,12 @@ interface LedgerData {
   period: { from: string; to: string }
   entries: LedgerEntry[]
   totals: { debit: number; credit: number; balance: number }
+  pagination?: { total: number; limit: number; offset: number }
 }
 
 export default function GeneralLedgerPage() {
   const formatCurrency = useFormatCurrency()
+  const { currency } = useCompanyCurrency()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState('')
   const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0])
@@ -37,6 +41,34 @@ export default function GeneralLedgerPage() {
     if (res.ok) setData(await res.json())
     setLoading(false)
   }
+
+  const glColumns: ExportColumn<LedgerEntry>[] = [
+    { header: 'Date', value: (e) => e.date, type: 'date' }, { header: 'Entry No', value: (e) => e.entryNo }, { header: 'Account No', value: (e) => e.account?.accountNo }, { header: 'Account', value: (e) => e.account?.name },
+    { header: 'Description', value: (e) => e.description }, { header: 'Cost Center', value: (e) => e.costCenter?.name }, { header: 'Status', value: (e) => e.status },
+    { header: `Debit (${currency})`, value: (e) => e.debit, type: 'currency' }, { header: `Credit (${currency})`, value: (e) => e.credit, type: 'currency' }, { header: `Balance (${currency})`, value: (e) => e.balance, type: 'currency' },
+  ]
+  // The on-screen ledger is capped at the API page size; export walks every page so it contains
+  // the complete filtered dataset, recomputing the running balance across page boundaries.
+  async function loadAllEntries(): Promise<LedgerEntry[]> {
+    const pageSize = 1000
+    const all: LedgerEntry[] = []
+    let offset = 0
+    let total = Infinity
+    while (offset < total) {
+      const params = new URLSearchParams({ from, to, limit: String(pageSize), offset: String(offset) })
+      if (accountId) params.set('accountId', accountId)
+      const res = await fetch(`/api/reports/general-ledger?${params}`)
+      if (!res.ok) throw new Error(`Could not load ledger (${res.status})`)
+      const page = await res.json() as LedgerData
+      all.push(...page.entries)
+      total = page.pagination?.total ?? all.length
+      if (page.entries.length === 0) break
+      offset += page.entries.length
+    }
+    let running = 0
+    return all.map((e) => { running += e.debit - e.credit; return { ...e, balance: running } })
+  }
+  const selectedAccount = accounts.find((a) => a.id === accountId)
 
   return (
     <div className="p-6">
@@ -67,12 +99,17 @@ export default function GeneralLedgerPage() {
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <button onClick={load} disabled={loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
-            {loading ? 'Loading...' : 'View Ledger'}
-          </button>
+                    <ReportActions loading={loading} onApply={load} onClear={() => { setAccountId(''); setFrom(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]); setTo(new Date().toISOString().split('T')[0]); setData(null) }} applyLabel="View Ledger"
+            exportRows={data ? loadAllEntries : null} exportColumns={glColumns} filename="general-ledger" sheetName="General Ledger"
+            meta={['General Ledger', `Period: ${from} to ${to}`, `Account: ${selectedAccount ? `${selectedAccount.accountNo} - ${selectedAccount.name}` : 'All accounts'}`]} />
         </div>
       </div>
+
+      {data && data.pagination && data.pagination.total > data.entries.length && (
+        <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Showing the first {data.entries.length.toLocaleString()} of {data.pagination.total.toLocaleString()} ledger lines. Exporting includes all {data.pagination.total.toLocaleString()}.
+        </p>
+      )}
 
       {data && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

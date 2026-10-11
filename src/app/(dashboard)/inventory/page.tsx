@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, Edit2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
@@ -11,6 +11,9 @@ import { PageHeader, SearchBar, FilterBar } from '@/components/ui/page-header'
 import { ModuleImportExportToolbar } from '@/components/import-export/ModuleImportExportToolbar'
 import { INVENTORY_FIELDS } from '@/lib/import-export/registry/modules/inventory.fields'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface InventoryItem {
   id: string; itemCode: string; name: string; description?: string; category?: string
@@ -22,6 +25,7 @@ export default function InventoryPage() {
   const { currency } = useCompanyCurrency()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<FilterValues>({ category: '', stock: '', status: '', unit: '', minPrice: '', maxPrice: '' })
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<InventoryItem | null>(null)
@@ -67,6 +71,25 @@ export default function InventoryPage() {
     setSaving(false)
   }
 
+  const categories = useMemo(() => [...new Set(items.map((i) => i.category).filter(Boolean) as string[])].sort(), [items])
+  const units = useMemo(() => [...new Set(items.map((i) => i.unit).filter(Boolean))].sort(), [items])
+  const visible = useMemo(() => items.filter((i) => {
+    if (filters.category && i.category !== filters.category) return false
+    if (filters.unit && i.unit !== filters.unit) return false
+    if (filters.status && (filters.status === 'active') !== i.isActive) return false
+    if (filters.stock === 'low' && !(i.quantity <= i.minQuantity)) return false
+    if (filters.stock === 'out' && i.quantity > 0) return false
+    if (filters.stock === 'in' && i.quantity <= 0) return false
+    if (filters.minPrice !== '' && i.salePrice < Number(filters.minPrice)) return false
+    if (filters.maxPrice !== '' && i.salePrice > Number(filters.maxPrice)) return false
+    return true
+  }), [items, filters])
+  const exportColumns: ExportColumn<InventoryItem>[] = [
+    { header: 'Item Code', value: (i) => i.itemCode }, { header: 'Name', value: (i) => i.name }, { header: 'Description', value: (i) => i.description }, { header: 'Category', value: (i) => i.category },
+    { header: 'Unit', value: (i) => i.unit }, { header: 'Cost Price', value: (i) => i.costPrice, type: 'currency' }, { header: 'Sale Price', value: (i) => i.salePrice, type: 'currency' },
+    { header: 'Quantity', value: (i) => i.quantity, type: 'number' }, { header: 'Min Quantity', value: (i) => i.minQuantity, type: 'number' },
+    { header: 'Stock Value', value: (i) => i.quantity * i.costPrice, type: 'currency' }, { header: 'Status', value: (i) => i.isActive ? 'Active' : 'Inactive' },
+  ]
   const lowStock = items.filter(i => i.quantity <= i.minQuantity && i.isActive).length
   const totalValue = items.reduce((s, i) => s + i.quantity * i.costPrice, 0)
 
@@ -84,6 +107,7 @@ export default function InventoryPage() {
               fields={INVENTORY_FIELDS}
               filters={search ? { search } : {}}
               onImportSuccess={load}
+              tableExport={{ filename: 'inventory', columns: exportColumns, rows: visible }}
             />
             <Button onClick={openCreate}><Plus size={15} /> New Item</Button>
           </div>
@@ -110,6 +134,7 @@ export default function InventoryPage() {
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'category', label: 'Category', type: 'select', allLabel: 'All categories', options: categories.map((c) => ({ value: c, label: c })) }, { key: 'stock', label: 'Stock level', type: 'select', allLabel: 'Any', options: [{ value: 'in', label: 'In stock' }, { value: 'low', label: 'Low stock' }, { value: 'out', label: 'Out of stock' }] }, { key: 'status', label: 'Status', type: 'select', allLabel: 'Active & inactive', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] }, { key: 'unit', label: 'Unit', type: 'select', allLabel: 'All units', options: units.map((u) => ({ value: u, label: u })) }, { key: 'minPrice', label: 'Min sale price', type: 'number' }, { key: 'maxPrice', label: 'Max sale price', type: 'number' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -125,9 +150,9 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-slate-50">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 10 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
-              )) : items.length === 0 ? (
+              )) : visible.length === 0 ? (
                 <tr><td colSpan={10} className="px-4 py-16 text-center text-slate-400 text-sm">No inventory items yet.</td></tr>
-              ) : items.map(item => {
+              ) : visible.map(item => {
                 const isLow = item.quantity <= item.minQuantity
                 return (
                   <tr key={item.id} className={cn('hover:bg-slate-50/60 transition-colors', isLow && 'bg-amber-50/30')}>

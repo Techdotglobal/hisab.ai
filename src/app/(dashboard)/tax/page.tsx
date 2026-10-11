@@ -11,6 +11,9 @@ import { ActionDropdown } from '@/components/ui/action-dropdown'
 import { ModuleImportExportToolbar } from '@/components/import-export/ModuleImportExportToolbar'
 import { TAX_RATE_FIELDS } from '@/lib/import-export/registry/modules/tax-rates.fields'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface TaxRate {
   id: string
@@ -72,12 +75,13 @@ export default function TaxPage() {
   const [scopeFilter, setScopeFilter] = useState('ALL')
   const [rateFilter, setRateFilter] = useState('ALL')
   const [page, setPage] = useState(1)
+  const [vatPeriod, setVatPeriod] = useState<FilterValues>({ from: '', to: '' })
 
   async function load() {
     setLoading(true)
     const [ratesRes, reportRes] = await Promise.all([
       fetch('/api/tax-configurations?includeInactive=true'),
-      fetch('/api/tax/report'),
+      fetch(`/api/tax/report?${new URLSearchParams(Object.entries(vatPeriod).filter(([, v]) => v))}`),
     ])
     if (ratesRes.ok) {
       const rates = await ratesRes.json()
@@ -89,7 +93,7 @@ export default function TaxPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [vatPeriod])
   useEffect(() => { setPage(1) }, [search, statusFilter, typeFilter, scopeFilter, rateFilter])
 
   const types = useMemo(() => Array.from(new Set(taxRates.map(rate => rate.type))).sort(), [taxRates])
@@ -102,6 +106,20 @@ export default function TaxPage() {
       && (scopeFilter === 'ALL' || getScope(tax.type) === scopeFilter)
       && (rateFilter === 'ALL' || getRate(tax) === Number(rateFilter))
   }), [taxRates, search, statusFilter, typeFilter, scopeFilter, rateFilter])
+  const rateExportColumns: ExportColumn<TaxRate>[] = [
+    { header: 'Tax Name', value: (t) => t.name }, { header: 'Tax Type', value: (t) => typeLabel(t.type) }, { header: 'Tax Rate (%)', value: (t) => getRate(t), type: 'percent' },
+    { header: 'Tax Scope', value: (t) => getScope(t.type) }, { header: 'Status', value: (t) => t.isActive ? 'Active' : 'Inactive' }, { header: 'Default', value: (t) => t.isDefault ? 'Yes' : 'No' },
+    { header: 'Last Updated', value: (t) => t.updatedAt ?? t.createdAt, type: 'date' },
+  ]
+  const vatRows = report ? [
+    { line: 'VAT Collected (Output)', base: report.sales.amount, vat: report.sales.vatCollected, count: report.sales.invoiceCount },
+    { line: 'VAT Paid (Input)', base: report.purchases.amount, vat: report.purchases.vatPaid, count: report.purchases.billCount },
+    { line: report.vatPayable >= 0 ? 'Net VAT Payable' : 'Net VAT Refundable', base: null, vat: Math.abs(report.vatPayable), count: null },
+  ] : []
+  const vatExportColumns: ExportColumn<(typeof vatRows)[number]>[] = [
+    { header: 'VAT Line', value: (r) => r.line }, { header: 'Taxable Amount', value: (r) => r.base, type: 'currency' },
+    { header: 'VAT Amount', value: (r) => r.vat, type: 'currency' }, { header: 'Documents', value: (r) => r.count, type: 'number' },
+  ]
   const pagedRates = filteredRates.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const pageCount = Math.max(1, Math.ceil(filteredRates.length / PAGE_SIZE))
 
@@ -156,8 +174,12 @@ export default function TaxPage() {
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-6">
       <PageHeader title="Tax & ZATCA" subtitle="Tax rates, VAT reporting, Saudi tax authority compliance" breadcrumb={[{ label: 'Reports & Tax' }, { label: 'Tax & ZATCA' }]}
-        action={<div className="flex items-center gap-2"><ModuleImportExportToolbar moduleKey="tax-rates" moduleLabel="Tax Rates" fields={TAX_RATE_FIELDS} onImportSuccess={load} /><Button onClick={openCreate}><Plus size={15} /> Add Tax Rate</Button></div>} />
+        action={<div className="flex items-center gap-2"><ModuleImportExportToolbar moduleKey="tax-rates" moduleLabel="Tax Rates" fields={TAX_RATE_FIELDS} onImportSuccess={load} tableExport={{ filename: 'tax-rates', columns: rateExportColumns, rows: filteredRates }} /><Button onClick={openCreate}><Plus size={15} /> Add Tax Rate</Button></div>} />
 
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[260px] flex-1"><FilterPanel applied={vatPeriod} onApply={setVatPeriod} fields={[{ key: 'from', label: 'VAT period from', type: 'date' }, { key: 'to', label: 'VAT period to', type: 'date' }]} /></div>
+        <ExportMenu label="Export VAT Summary" filename="vat-summary" sheetName="VAT Summary" columns={vatExportColumns} rows={vatRows} meta={['VAT Summary', `Period: ${vatPeriod.from || 'start of year'} to ${vatPeriod.to || 'today'}`]} />
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Metric label="VAT Collected (Output)" value={formatCurrency(vatCollected)} note={report ? `${report.sales.invoiceCount} invoices` : 'From sales invoices'} tone="emerald" />
         <Metric label="VAT Paid (Input)" value={formatCurrency(vatPaid)} note={report ? `${report.purchases.billCount} bills` : 'From purchase bills'} tone="rose" />

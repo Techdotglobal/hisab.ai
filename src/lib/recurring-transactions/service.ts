@@ -396,11 +396,6 @@ export async function listExecutionHistory(companyId: string, templateId: string
     generatedTransactionType: row.generated_transaction_type, executedBy: (row.executor as { full_name?: string } | null)?.full_name ?? 'System', error: row.error }))
 }
 
-function csvCell(value: unknown) {
-  const text = value == null ? '' : String(value)
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
-}
-
 export async function exportRecurringTemplates(companyId: string, requestUrl: string) {
   const source = new URL(requestUrl)
   const rows: Awaited<ReturnType<typeof listRecurringTemplates>>['items'] = []
@@ -418,8 +413,8 @@ export async function exportRecurringTemplates(companyId: string, requestUrl: st
   const headers = ['Template Name', 'Type', 'TXN Type', 'Interval', 'Previous Date', 'Next Date', 'Customer / Supplier', 'Amount', 'Currency', 'Status']
   const lines = rows.map((row) => [row.templateName, row.type, row.transactionType,
     `${row.schedule.frequency}:${row.schedule.intervalCount}`, row.schedule.previousDate, row.schedule.nextDate,
-    row.partyName, row.amount, row.currency, row.status].map(csvCell).join(','))
-  return `\uFEFF${headers.map(csvCell).join(',')}\r\n${lines.join('\r\n')}`
+    row.partyName, row.amount, row.currency, row.status])
+  return { headers, rows: lines }
 }
 
 export async function processDueRecurringTransactions(companyId: string, systemUserId: string, limit = 50) {

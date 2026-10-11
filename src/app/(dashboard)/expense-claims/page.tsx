@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
 import { formatDate, formatCurrency as formatAmount } from '@/lib/utils'
 import { useCompanyCurrency } from '@/hooks/use-company-currency'
@@ -10,6 +10,9 @@ import { Modal } from '@/components/ui/modal'
 import { Input, Select } from '@/components/ui/input'
 import { PageHeader, FilterBar } from '@/components/ui/page-header'
 import { readApiError } from '@/lib/api-client'
+import { ExportMenu } from '@/components/data-tools/export-menu'
+import { FilterPanel, inDateRange, type FilterValues } from '@/components/data-tools/filter-panel'
+import type { ExportColumn } from '@/lib/export/table-export'
 
 interface Employee { id: string; name: string }
 interface Claim {
@@ -20,6 +23,7 @@ interface Claim {
 export default function ExpenseClaimsPage() {
   const { currency: primaryCurrency } = useCompanyCurrency()
   const [claims, setClaims] = useState<Claim[]>([])
+  const [filters, setFilters] = useState<FilterValues>({ employee: '', status: '', from: '', to: '', min: '', max: '' })
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -52,6 +56,19 @@ export default function ExpenseClaimsPage() {
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? id.slice(0, 8)
 
+  const claimStatuses = useMemo(() => [...new Set(claims.map((c) => c.status))].sort(), [claims])
+  const visible = useMemo(() => claims.filter((c) => {
+    if (filters.employee && c.employee_id !== filters.employee) return false
+    if (filters.status && c.status !== filters.status) return false
+    if (filters.min !== '' && c.total < Number(filters.min)) return false
+    if (filters.max !== '' && c.total > Number(filters.max)) return false
+    return inDateRange(c.date, filters.from, filters.to)
+  }), [claims, filters])
+  const exportColumns: ExportColumn<Claim>[] = [
+    { header: 'Claim No', value: (c) => c.claim_no }, { header: 'Employee', value: (c) => employees.find((e) => e.id === c.employee_id)?.name ?? c.employee_id },
+    { header: 'Date', value: (c) => c.date, type: 'date' }, { header: 'Amount', value: (c) => c.total, type: 'currency' }, { header: 'Status', value: (c) => c.status }, { header: 'Notes', value: (c) => c.notes },
+  ]
+
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-5">
       <PageHeader
@@ -65,7 +82,9 @@ export default function ExpenseClaimsPage() {
         <button onClick={load} className="p-2 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 bg-white">
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
+        <ExportMenu filename="expense-claims" sheetName="Expense Claims" columns={exportColumns} rows={visible} />
       </FilterBar>
+      <FilterPanel applied={filters} onApply={setFilters} fields={[{ key: 'employee', label: 'Employee', type: 'select', allLabel: 'All employees', options: employees.map((e) => ({ value: e.id, label: e.name })) }, { key: 'status', label: 'Status', type: 'select', allLabel: 'All statuses', options: claimStatuses.map((x) => ({ value: x, label: x })) }, { key: 'from', label: 'Date from', type: 'date' }, { key: 'to', label: 'Date to', type: 'date' }, { key: 'min', label: 'Min amount', type: 'number' }, { key: 'max', label: 'Max amount', type: 'number' }]} />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="w-full data-table">
@@ -79,9 +98,9 @@ export default function ExpenseClaimsPage() {
           <tbody className="divide-y divide-slate-50">
             {loading ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading...</td></tr>
-            ) : claims.length === 0 ? (
+            ) : visible.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-16 text-center text-slate-400">No claims yet.</td></tr>
-            ) : claims.map(c => (
+            ) : visible.map(c => (
               <tr key={c.id} className="hover:bg-slate-50/60">
                 <td className="px-4 py-3 font-mono text-xs text-indigo-600">{c.claim_no}</td>
                 <td className="px-4 py-3 text-sm">{employeeName(c.employee_id)}</td>
