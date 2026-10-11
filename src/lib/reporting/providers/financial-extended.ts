@@ -1,6 +1,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
+import { fetchAllRows } from '@/lib/db/repository-utils'
 import {
   buildBalanceSheetFromLedger,
   buildProfitLossFromLedger,
@@ -238,18 +239,19 @@ export async function runCustomerLedger(req: ReportRunRequest) {
   const from = new Date(req.period!.from)
   const to = new Date(req.period!.to)
 
-  let query = client
-    .from('invoices')
-    .select('id, invoice_no, date, due_date, total, balance, status, customer:customers(id, name)')
-    .eq('company_id', companyId)
-    .gte('date', from.toISOString())
-    .lte('date', to.toISOString())
-    .is('deleted_at', null)
-    .order('date')
+  const buildInvoiceQuery = () => {
+    let query = client
+      .from('invoices')
+      .select('id, invoice_no, date, due_date, total, balance, status, customer:customers(id, name)')
+      .eq('company_id', companyId)
+      .gte('date', from.toISOString())
+      .lte('date', to.toISOString())
+      .is('deleted_at', null)
+    if (customerId) query = query.eq('customer_id', customerId)
+    return query.order('date').order('id')
+  }
 
-  if (customerId) query = query.eq('customer_id', customerId)
-
-  const { data, error } = await query
+  const { data, error } = await fetchAllRows(buildInvoiceQuery)
   if (error) throw error
 
   const rows = (data ?? []).map((inv) => ({

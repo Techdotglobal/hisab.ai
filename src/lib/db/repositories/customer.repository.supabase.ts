@@ -2,7 +2,7 @@ import 'server-only'
 import { isSaudiVatTrn } from '@/lib/customers/vat'
 import { mapCustomerRow, mapInvoiceRow } from '../entity-mappers'
 import type { CustomerRecord } from '../entities'
-import { queryByIdOrLegacy, resolveCompanyId, supabaseDb } from '../repository-utils'
+import { fetchAllRows, queryByIdOrLegacy, resolveCompanyId, supabaseDb } from '../repository-utils'
 import { resolveSequenceRepository } from '../sequence-resolver'
 import type {
   CustomerBatchDuplicateInput,
@@ -23,12 +23,15 @@ async function attachOutstanding(
   if (customers.length === 0) return customers
   const db = supabaseDb()
   const ids = customers.map((c) => c.id)
-  const { data: invoices, error } = await db
-    .from('invoices')
-    .select('customer_id, balance, status')
-    .eq('company_id', companyId)
-    .in('customer_id', ids)
-    .is('deleted_at', null)
+  const { data: invoices, error } = await fetchAllRows(() =>
+    db
+      .from('invoices')
+      .select('customer_id, balance, status')
+      .eq('company_id', companyId)
+      .in('customer_id', ids)
+      .is('deleted_at', null)
+      .order('id', { ascending: true }),
+  )
 
   if (error) throw error
 

@@ -54,6 +54,11 @@ async function storeDocumentBaseAmounts(
   return rate
 }
 
+/** Revenue account for an invoice line: the line's chart of account when set, otherwise the default revenue account. */
+export function invoiceLineRevenueAccount(lineAccountId: unknown, defaultRevenueAccount: string | null | undefined): string | null | undefined {
+  return lineAccountId ? String(lineAccountId) : defaultRevenueAccount
+}
+
 export async function postInvoiceToLedger(invoiceId: string, companyId?: string) {
   const cid = companyId ?? await resolveCompanyId()
   const client = createAdminClient()
@@ -96,7 +101,7 @@ export async function postInvoiceToLedger(invoiceId: string, companyId?: string)
   const revenueLines = (invoice.lines ?? []).filter((line: Record<string,unknown>) => Number(line.amount ?? 0) > 0)
   if (revenueLines.length) {
     for (const line of revenueLines) {
-      const accountId = line.account_id ? String(line.account_id) : revenueAccount
+      const accountId = invoiceLineRevenueAccount(line.account_id, revenueAccount)
       if (!accountId) continue
       lines.push({ accountId, debit:isCreditNote?Number(line.amount):undefined, credit:isCreditNote?undefined:Number(line.amount), description:String(line.description ?? `Revenue ${invoice.invoice_no}`), costCenterId:line.cost_center_id ? String(line.cost_center_id) : null, exchangeRateOverride:exchangeRate })
     }

@@ -3,7 +3,9 @@ import PDFDocument from 'pdfkit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import { mapCustomerRow, mapInvoiceRow, mapPaymentRow } from '@/lib/db/entity-mappers'
-import { queryByIdOrLegacy } from '@/lib/db/repository-utils'
+import { fetchAllRows, queryByIdOrLegacy } from '@/lib/db/repository-utils'
+
+const PAYMENT_LOOKUP_CHUNK = 100
 import { formatMoney, formatPdfDate } from '@/lib/invoices/pdf/format'
 
 export interface CustomerStatementData {
@@ -42,18 +44,19 @@ export async function loadCustomerStatement(
 
   const customer = mapCustomerRow(scopedCustomerId)
 
-  let invoiceQuery = client
-    .from('invoices')
-    .select('*')
-    .eq('company_id', companyId)
-    .eq('customer_id', customer.id)
-    .is('deleted_at', null)
-    .order('date', { ascending: true })
+  const buildInvoiceQuery = () => {
+    let query = client
+      .from('invoices')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('customer_id', customer.id)
+      .is('deleted_at', null)
+    if (options.from) query = query.gte('date', new Date(options.from).toISOString())
+    if (options.to) query = query.lte('date', new Date(options.to).toISOString())
+    return query.order('date', { ascending: true }).order('id', { ascending: true })
+  }
 
-  if (options.from) invoiceQuery = invoiceQuery.gte('date', new Date(options.from).toISOString())
-  if (options.to) invoiceQuery = invoiceQuery.lte('date', new Date(options.to).toISOString())
-
-  const { data: invoiceRows, error: invoiceError } = await invoiceQuery
+  const { data: invoiceRows, error: invoiceError } = await fetchAllRows(buildInvoiceQuery)
   if (invoiceError) throw invoiceError
 
   const invoices = (invoiceRows ?? []).map((row) => {
@@ -73,21 +76,30 @@ export async function loadCustomerStatement(
   let payments: CustomerStatementData['payments'] = []
 
   if (invoiceIds.length > 0) {
-    let paymentQuery = client
-      .from('payments')
-      .select('*')
-      .eq('company_id', companyId)
-      .in('invoice_id', invoiceIds)
-      .is('deleted_at', null)
-      .order('date', { ascending: true })
+    const paymentRows: Record<string, unknown>[] = []
+    for (let start = 0; start < invoiceIds.length; start += PAYMENT_LOOKUP_CHUNK) {
+      const chunk = invoiceIds.slice(start, start + PAYMENT_LOOKUP_CHUNK)
+      const buildPaymentQuery = () => {
+        let query = client
+          .from('payments')
+          .select('*')
+          .eq('company_id', companyId)
+          .in('invoice_id', chunk)
+          .is('deleted_at', null)
+        if (options.from) query = query.gte('date', new Date(options.from).toISOString())
+        if (options.to) query = query.lte('date', new Date(options.to).toISOString())
+        return query.order('date', { ascending: true }).order('id', { ascending: true })
+      }
+      const { data, error } = await fetchAllRows(buildPaymentQuery)
+      if (error) throw error
+      paymentRows.push(...data)
+    }
+    paymentRows.sort((a, b) => {
+      const byDate = new Date(String(a.date)).getTime() - new Date(String(b.date)).getTime()
+      return byDate !== 0 ? byDate : String(a.id).localeCompare(String(b.id))
+    })
 
-    if (options.from) paymentQuery = paymentQuery.gte('date', new Date(options.from).toISOString())
-    if (options.to) paymentQuery = paymentQuery.lte('date', new Date(options.to).toISOString())
-
-    const { data: paymentRows, error: paymentError } = await paymentQuery
-    if (paymentError) throw paymentError
-
-    payments = (paymentRows ?? []).map((row) => {
+    payments = paymentRows.map((row) => {
       const payment = mapPaymentRow(row)
       return {
         id: payment.id,

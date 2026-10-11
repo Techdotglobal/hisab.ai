@@ -2,6 +2,7 @@ import { requireAuth } from '@/lib/auth'
 import { resolveTransactionCurrency } from '@/lib/currency/company'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
+import { fetchAllRows } from '@/lib/db/repository-utils'
 import { processSalesLines } from '@/lib/sales/line-utils'
 import { getNextSequence } from '@/lib/sequences'
 import { resolvePaymentMethod } from '@/lib/product-parity/payment-methods'
@@ -35,16 +36,17 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')?.trim()
 
     const client = createAdminClient()
-    let query = client
-      .from('sales_receipts')
-      .select('*, customers(name), payment_methods(id,name,code), lines:sales_receipt_lines(*)')
-      .eq('company_id', companyId)
-      .is('deleted_at', null)
-      .order('date', { ascending: false })
+    const buildQuery = () => {
+      let query = client
+        .from('sales_receipts')
+        .select('*, customers(name), payment_methods(id,name,code), lines:sales_receipt_lines(*)')
+        .eq('company_id', companyId)
+        .is('deleted_at', null)
+      if (search) query = query.ilike('receipt_no', `%${search}%`)
+      return query.order('date', { ascending: false }).order('id', { ascending: true })
+    }
 
-    if (search) query = query.ilike('receipt_no', `%${search}%`)
-
-    const { data, error } = await query
+    const { data, error } = await fetchAllRows(buildQuery)
     if (error) throw error
 
     return Response.json((data ?? []).map((row) => {

@@ -29,7 +29,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       return Response.json({ error: 'Cannot delete your own account' }, { status: 400 })
     }
 
-    await deleteAppUser(id)
+    await deleteAppUser(id, currentUser.companyId)
     return Response.json({ success: true })
   } catch (error) {
     return authzErrorResponse(error)

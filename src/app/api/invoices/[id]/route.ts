@@ -3,6 +3,7 @@ import { postInvoiceToLedger } from '@/lib/accounting/document-posting'
 import { getInvoiceRepository } from '@/lib/db/provider'
 import { resolveCompanyId } from '@/lib/tenant'
 import { validateExpiryDate, validateInvoicePayload } from '@/lib/invoices/validation'
+import { POSTED_INVOICE_DELETE_ERROR, POSTED_INVOICE_EDIT_ERROR } from '@/lib/invoices/posted-guard'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -76,6 +77,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (error instanceof Error && error.message === 'Cannot edit paid invoice') {
       return Response.json({ error: error.message }, { status: 400 })
     }
+    if (error instanceof Error && error.message === POSTED_INVOICE_EDIT_ERROR) {
+      return Response.json({ error: error.message }, { status: 400 })
+    }
     if (error instanceof Error && error.message === 'Customer not found') {
       return Response.json({ error: error.message }, { status: 400 })
     }
@@ -96,7 +100,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     if (error instanceof Error && error.message === 'Invoice not found') {
       return Response.json({ error: 'Not found' }, { status: 404 })
     }
-    if (error instanceof Error && error.message === 'Cannot delete paid invoice') {
+    if (error instanceof Error && (error.message === 'Cannot delete paid invoice' || error.message === POSTED_INVOICE_DELETE_ERROR)) {
       return Response.json({ error: error.message }, { status: 400 })
     }
     return Response.json({ error: String(error) }, { status: 500 })

@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth'
 import type { CompanyRole } from '@/lib/db/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
+import { OwnershipGuardError } from '@/lib/supabase/auth-users'
 
 export class ForbiddenError extends Error {
   constructor(message = 'Forbidden') {
@@ -56,6 +57,9 @@ export function authzErrorResponse(error: unknown) {
   }
   if (error instanceof ForbiddenError) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  if (error instanceof OwnershipGuardError) {
+    return Response.json({ error: error.message }, { status: 400 })
   }
   return Response.json({ error: serializeAuthzError(error) }, { status: 500 })
 }
