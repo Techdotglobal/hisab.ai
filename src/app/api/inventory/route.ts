@@ -1,9 +1,10 @@
 ﻿import { requireAuth } from '@/lib/auth'
+import { guarded } from '@/lib/permissions/guard'
 import { getInventoryRepository } from '@/lib/db/provider'
 import { prisma } from '@/lib/prisma'
 import { getNextSequence } from '@/lib/sequences'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -52,3 +53,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('inventory.view', handleGet)
+export const POST = guarded('inventory.edit', handlePost)

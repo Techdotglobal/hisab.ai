@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getInvoiceRepository } from '@/lib/db/provider'
 import type { InvoiceListOptions } from '@/lib/db/repositories/invoice.repository.interface'
@@ -16,7 +17,7 @@ const MAX_PAGES = 1000
  * Exports the complete invoice list for the active filters/search (every page),
  * using the same repository query as the on-screen table so both stay consistent.
  */
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -71,3 +72,5 @@ export async function GET(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

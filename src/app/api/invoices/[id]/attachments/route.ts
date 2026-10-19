@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getInvoiceRepository } from '@/lib/db/provider'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -12,7 +13,7 @@ function canMutateAttachments(status: string, zatcaStatus?: string | null): bool
   return status === 'DRAFT' && canEditInvoice(zatcaStatus)
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -39,7 +40,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const companyId = await resolveCompanyId()
@@ -97,3 +98,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)
+export const POST = guarded('invoices.edit', handlePost)

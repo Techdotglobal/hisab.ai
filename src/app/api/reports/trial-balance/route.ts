@@ -1,16 +1,18 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { resolveCompanyId } from '@/lib/tenant'
+import { parseReportBound } from '@/lib/accounting/ledger-report-math'
 import { buildTrialBalance } from '@/lib/accounting/trial-balance'
 import { buildReportCacheKey, getCachedReport, setCachedReport } from '@/lib/accounting/report-cache'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
     const { searchParams } = new URL(request.url)
-    const asOf = searchParams.get('asOf') ? new Date(searchParams.get('asOf')!) : new Date()
-    const from = searchParams.get('from') ? new Date(searchParams.get('from')!) : undefined
-    const to = searchParams.get('to') ? new Date(searchParams.get('to')!) : undefined
+    const asOf = parseReportBound(searchParams.get('asOf'), 'end') ?? new Date()
+    const from = parseReportBound(searchParams.get('from'), 'start')
+    const to = parseReportBound(searchParams.get('to'), 'end')
 
     const cacheKey = buildReportCacheKey('trial-balance', companyId, {
       asOf: asOf.toISOString(),
@@ -31,3 +33,5 @@ export async function GET(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('reports.view', handleGet)

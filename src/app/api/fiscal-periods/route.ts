@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { closeFiscalPeriod, listFiscalPeriods } from '@/lib/accounting/fiscal-periods'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const periods = await listFiscalPeriods()
@@ -14,7 +15,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -33,3 +34,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('accounts.view', handleGet)
+export const POST = guarded('fiscal_periods.manage', handlePost)

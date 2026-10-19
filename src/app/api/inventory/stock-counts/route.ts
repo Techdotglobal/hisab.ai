@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import {
   createStockCountSession,
@@ -7,7 +8,7 @@ import {
 import { InventoryError } from '@/lib/inventory/movements'
 import { listCompanyRows } from '@/lib/api/crud'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -61,3 +62,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('inventory.view', handleGet)
+export const POST = guarded('inventory.edit', handlePost)

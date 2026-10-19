@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getSettingsRepository } from '@/lib/db/provider'
 import { getCertificateStatus } from '@/lib/zatca/onboarding/certificate-status'
@@ -6,7 +7,7 @@ import { getCertificateStatus } from '@/lib/zatca/onboarding/certificate-status'
  * GET /api/zatca/onboarding/certificate-status
  * Returns non-sensitive certificate lifecycle metadata.
  */
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const settings = await getSettingsRepository().findFirst()
@@ -19,3 +20,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { cloneJournalEntry } from '@/lib/accounting/journal-operations'
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const { id } = await params
@@ -14,3 +15,5 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('journals.edit', handlePost)

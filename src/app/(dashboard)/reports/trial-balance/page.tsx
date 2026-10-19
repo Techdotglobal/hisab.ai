@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
+import { DrilldownDrawer, DrillAmount, type DrilldownParams } from '@/components/reports/DrilldownDrawer'
 import { ReportActions } from '@/components/data-tools/report-actions'
 import type { ExportColumn } from '@/lib/export/table-export'
 
 interface TBRow {
+  accountId?: string
   accountNo: string
   accountName: string
   canonicalType: string
@@ -28,6 +30,7 @@ export default function TrialBalancePage() {
   const [asOf, setAsOf] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<TBData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [drill, setDrill] = useState<DrilldownParams | null>(null)
 
   async function load() {
     setLoading(true)
@@ -85,7 +88,7 @@ export default function TrialBalancePage() {
                   <td className="px-5 py-2.5 text-gray-500">{row.canonicalType}</td>
                   <td className="px-5 py-2.5 text-right">{formatCurrency(row.debit)}</td>
                   <td className="px-5 py-2.5 text-right">{formatCurrency(row.credit)}</td>
-                  <td className="px-5 py-2.5 text-right font-medium">{formatCurrency(row.balance)}</td>
+                  <td className="px-5 py-2.5 text-right font-medium">{row.accountId ? <DrillAmount label={`${row.accountNo} ${row.accountName}`} onClick={() => setDrill({ metric: 'account', accountId: row.accountId, asOf: data.asOf.slice(0, 10) })}>{formatCurrency(row.balance)}</DrillAmount> : formatCurrency(row.balance)}</td>
                 </tr>
               ))}
             </tbody>
@@ -100,6 +103,8 @@ export default function TrialBalancePage() {
           </table>
         </div>
       )}
+
+      <DrilldownDrawer params={drill} onClose={() => setDrill(null)} />
 
       {!data && !loading && (
         <div className="flex items-center justify-center h-48 text-gray-400 text-sm">

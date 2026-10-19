@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { updateMasterRecord, deleteMasterRecord } from '@/lib/master-data/repository'
 
 const VALID_TABLES = new Set(['units_of_measure', 'warehouses', 'payment_terms', 'departments', 'company_currencies'])
 
-export async function PUT(request: Request, { params }: { params: Promise<{ table: string; id: string }> }) {
+async function handlePut(request: Request, { params }: { params: Promise<{ table: string; id: string }> }) {
   try {
     await requireAuth()
     const { table, id } = await params
@@ -21,7 +22,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ tabl
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ table: string; id: string }> }) {
+async function handleDelete(_req: Request, { params }: { params: Promise<{ table: string; id: string }> }) {
   try {
     await requireAuth()
     const { table, id } = await params
@@ -37,3 +38,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ tabl
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const PUT = guarded(['settings.manage', 'inventory.edit', 'cost_centers.manage'], handlePut)
+export const DELETE = guarded(['settings.manage', 'inventory.edit', 'cost_centers.manage'], handleDelete)

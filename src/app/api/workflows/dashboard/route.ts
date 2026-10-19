@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import { processWorkflowEscalationsAndReminders } from '@/lib/workflow/engine'
 import { listUserNotifications } from '@/lib/workflow/notifications'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const user = await requireAuth()
     const companyId = await resolveCompanyId()
@@ -66,3 +67,5 @@ export async function GET(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('dashboard.view', handleGet)

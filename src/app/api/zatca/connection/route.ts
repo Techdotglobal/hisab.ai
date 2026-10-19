@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { getConnectionManagerSnapshot } from '@/lib/zatca/connection/manager'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     return Response.json(await getConnectionManagerSnapshot())
@@ -16,3 +17,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('integrations.manage', handleGet)

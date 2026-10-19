@@ -103,6 +103,7 @@ const NAV = [
       { label: 'Platform', href: '/platform', icon: Cog },
       { label: 'Approvals', href: '/workflows', icon: GitBranch },
       { label: 'Users', href: '/users', icon: UserCog },
+      { label: 'Audit Log', href: '/audit-log', icon: Shield },
       { label: 'Migration Wizard', href: '/migration-wizard', icon: Wand2 },
       { label: 'Migration Center', href: '/migration-center', icon: Gauge },
       { label: 'Migration History', href: '/migration-history', icon: ClipboardList },

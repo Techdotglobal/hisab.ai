@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { runFailureScenarios } from '@/lib/zatca/testing/failure-scenarios'
 
@@ -5,7 +6,7 @@ import { runFailureScenarios } from '@/lib/zatca/testing/failure-scenarios'
  * GET /api/zatca/verify/failure-scenarios
  * Runs intentional invalid-input scenarios to verify error handling.
  */
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const results = runFailureScenarios()
@@ -21,3 +22,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('integrations.manage', handleGet)

@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { buildErrorReport } from '@/lib/import-export/import/error-report'
 import { getImportJobErrors } from '@/lib/import-export/jobs/import-job.service'
 import { getImportHistoryDetail } from '@/lib/import-export/history/import-history.service'
 import { apiError } from '@/lib/import-export/api-helpers'
 
-export async function GET(
+async function handleGet(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -31,3 +32,5 @@ export async function GET(
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

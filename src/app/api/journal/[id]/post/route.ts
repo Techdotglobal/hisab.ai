@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { postJournalEntry } from '@/lib/accounting/posting-service'
 import { extractClientIp } from '@/lib/accounting/posting-audit'
@@ -5,7 +6,7 @@ import { PostingValidationError } from '@/lib/accounting/validation'
 import { resolveCompanyId } from '@/lib/tenant'
 import { requireApprovedWorkflow, WorkflowError } from '@/lib/workflow/integration'
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const { id } = await params
@@ -45,3 +46,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return Response.json({ error: message }, { status: 500 })
   }
 }
+
+export const POST = guarded('journals.post', handlePost)

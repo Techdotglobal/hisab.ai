@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getSettingsRepository } from '@/lib/db/provider'
 import { resolveCompanyId, supabaseDb } from '@/lib/db/repository-utils'
@@ -37,7 +38,7 @@ async function getLatestComplianceStatus() {
  * GET /api/zatca/onboarding/status
  * Returns onboarding status for the active ZATCA environment (no secrets).
  */
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
 
@@ -64,3 +65,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

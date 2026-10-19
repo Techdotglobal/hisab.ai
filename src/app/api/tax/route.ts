@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { resolveCompanyId } from '@/lib/tenant'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -16,7 +17,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -47,3 +48,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('tax.view', handleGet)
+export const POST = guarded('tax.manage', handlePost)

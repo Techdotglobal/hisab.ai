@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { generateQrDataUrl, loadZatcaInvoiceById } from '@/lib/zatca'
 
@@ -6,7 +7,7 @@ import { generateQrDataUrl, loadZatcaInvoiceById } from '@/lib/zatca'
  *
  * GET /api/zatca/invoices/:id/qr
  */
-export async function GET(
+async function handleGet(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -39,3 +40,5 @@ export async function GET(
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

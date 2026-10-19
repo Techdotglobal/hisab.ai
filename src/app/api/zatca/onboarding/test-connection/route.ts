@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireZatcaAdmin } from '@/lib/zatca/authz'
 import { ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { getSettingsRepository } from '@/lib/db/provider'
@@ -9,7 +10,7 @@ import type { ZatcaEnvironment } from '@/lib/db/prisma-types'
  * POST /api/zatca/onboarding/test-connection
  * Body: { environment: 'SANDBOX' | 'PRODUCTION' }
  */
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireZatcaAdmin()
     const body = await request.json().catch(() => ({}))
@@ -57,3 +58,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('integrations.manage', handlePost)

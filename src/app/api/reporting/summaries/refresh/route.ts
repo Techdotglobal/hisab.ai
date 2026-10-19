@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { refreshDailySummaries } from '@/lib/reporting/summaries'
 
-export async function POST() {
+async function handlePost() {
   try {
     await requireAuth()
     const result = await refreshDailySummaries()
@@ -13,3 +14,5 @@ export async function POST() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('reports.view', handlePost)

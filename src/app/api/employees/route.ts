@@ -1,9 +1,10 @@
 ﻿import { requireAuth } from '@/lib/auth'
+import { guarded } from '@/lib/permissions/guard'
 import { prisma } from '@/lib/prisma'
 import { getNextSequence } from '@/lib/sequences'
 import { resolveCompanyId } from '@/lib/tenant'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -70,3 +71,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('employees.view', handleGet)
+export const POST = guarded('employees.manage', handlePost)

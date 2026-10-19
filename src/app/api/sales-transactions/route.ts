@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
@@ -5,7 +6,7 @@ import { fetchAllRows } from '@/lib/db/repository-utils'
 
 type Row = Record<string, unknown>
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -35,3 +36,5 @@ export async function GET() {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

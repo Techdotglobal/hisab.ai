@@ -1,5 +1,6 @@
 import 'server-only'
 import { aggregateLedgerBalances } from './ledger'
+import { CURRENT_EARNINGS_ID, CURRENT_EARNINGS_LABEL, unclosedEarnings } from './balance-sheet-math'
 import type { TrialBalanceRow } from './types'
 
 export async function buildTrialBalance(options: {
@@ -49,11 +50,13 @@ export async function buildTrialBalance(options: {
 }
 
 export async function buildBalanceSheetFromLedger(options: { asOf: Date; companyId?: string }) {
-  const balances = await aggregateLedgerBalances({
+  // All types are read so unclosed P&L earnings can be shown inside equity (see balance-sheet-math).
+  const allBalances = await aggregateLedgerBalances({
     companyId: options.companyId,
     asOf: options.asOf,
-    canonicalTypes: ['Asset', 'Liability', 'Equity'],
   })
+  const balances = allBalances.filter((b) => ['Asset', 'Liability', 'Equity'].includes(b.canonicalType))
+  const earnings = unclosedEarnings(allBalances)
 
   const sections: Record<string, { accountId:string; accountNo: string; name: string; balance: number }[]> = {
     Asset: [],
@@ -70,6 +73,10 @@ export async function buildBalanceSheetFromLedger(options: { asOf: Date; company
         balance: b.balance,
       })
     }
+  }
+
+  if (Math.abs(earnings) > 0.0001) {
+    sections.Equity.push({ accountId: CURRENT_EARNINGS_ID, accountNo: '', name: CURRENT_EARNINGS_LABEL, balance: earnings })
   }
 
   const totalAssets = sections.Asset.reduce((s, a) => s + a.balance, 0)

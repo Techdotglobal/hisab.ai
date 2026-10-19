@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { isZatcaAdmin, ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { stripLogoCacheBuster } from '@/lib/branding/logo-url'
 import { getSettingsRepository } from '@/lib/db/provider'
 import type { CompanySettingsUpdateInput } from '@/lib/db/types'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const settingsRepo = getSettingsRepository()
@@ -26,7 +27,7 @@ export async function GET() {
   }
 }
 
-export async function PUT(request: Request) {
+async function handlePut(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -84,3 +85,6 @@ export async function PUT(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('settings.view', handleGet)
+export const PUT = guarded('settings.manage', handlePut)

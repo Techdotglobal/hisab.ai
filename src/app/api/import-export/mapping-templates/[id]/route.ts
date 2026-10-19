@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import {
   deleteMappingTemplate,
@@ -5,7 +6,7 @@ import {
 } from '@/lib/import-export/mapping/mapping-template.service'
 import { apiError } from '@/lib/import-export/api-helpers'
 
-export async function PUT(
+async function handlePut(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -27,7 +28,7 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
+async function handleDelete(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -40,3 +41,6 @@ export async function DELETE(
     return apiError(error)
   }
 }
+
+export const PUT = guarded('imports.run', handlePut)
+export const DELETE = guarded('imports.run', handleDelete)

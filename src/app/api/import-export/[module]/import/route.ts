@@ -1,3 +1,6 @@
+import { guarded } from '@/lib/permissions/guard'
+import { requirePermission } from '@/lib/permissions/server'
+import { importPermissionsFor } from '@/lib/import-export/module-permissions'
 import { resolveCompanyId } from '@/lib/tenant'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { detectDuplicates } from '@/lib/import-export/duplicate/duplicate-detector'
@@ -109,6 +112,9 @@ async function handleImport(
       const authenticated = backgroundUser ?? await requireAccountingAdmin()
       const { module: resolvedModule } = await params
       resolveModuleParam(resolvedModule)
+      // Background continuations were authorized when the import was started; interactive calls must
+      // hold imports.run AND the write permission of the module being imported.
+      if (!backgroundUser) await requirePermission(...importPermissionsFor(resolvedModule))
       return { user: authenticated, moduleKey: resolvedModule }
     })
 
@@ -526,7 +532,7 @@ async function handleImport(
   }
 }
 
-export async function POST(
+async function handlePost(
   request: Request,
   { params }: { params: Promise<{ module: string }> },
 ) {
@@ -693,3 +699,5 @@ export async function runImportJobStep(jobId: string, companyId: string, userId:
     return response
   })
 }
+
+export const POST = guarded('imports.run', handlePost)

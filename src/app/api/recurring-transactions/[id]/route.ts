@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { authzErrorResponse, ForbiddenError } from '@/lib/authz'
 import { getRecurringTemplate, softDeleteRecurringTemplate, updateRecurringTemplate } from '@/lib/recurring-transactions/service'
@@ -9,7 +10,7 @@ function recurringError(error: unknown) {
   return Response.json({ error: message }, { status: /required|invalid|not found|must be/i.test(message) ? 400 : 500 })
 }
 
-export async function GET(_request: Request, context: RouteContext<'/api/recurring-transactions/[id]'>) {
+async function handleGet(_request: Request, context: RouteContext<'/api/recurring-transactions/[id]'>) {
   try {
     const user = await requireAuth(); const access = await requireRecurringPermission(user, 'view')
     const { id } = await context.params
@@ -18,7 +19,7 @@ export async function GET(_request: Request, context: RouteContext<'/api/recurri
   } catch (error) { return recurringError(error) }
 }
 
-export async function PUT(request: Request, context: RouteContext<'/api/recurring-transactions/[id]'>) {
+async function handlePut(request: Request, context: RouteContext<'/api/recurring-transactions/[id]'>) {
   try {
     const user = await requireAuth(); const access = await requireRecurringPermission(user, 'edit')
     const { id } = await context.params
@@ -27,7 +28,7 @@ export async function PUT(request: Request, context: RouteContext<'/api/recurrin
   } catch (error) { return recurringError(error) }
 }
 
-export async function DELETE(_request: Request, context: RouteContext<'/api/recurring-transactions/[id]'>) {
+async function handleDelete(_request: Request, context: RouteContext<'/api/recurring-transactions/[id]'>) {
   try {
     const user = await requireAuth(); const access = await requireRecurringPermission(user, 'delete')
     const { id } = await context.params
@@ -35,3 +36,7 @@ export async function DELETE(_request: Request, context: RouteContext<'/api/recu
     return removed ? Response.json({ success: true }) : Response.json({ error: 'Not found' }, { status: 404 })
   } catch (error) { return recurringError(error) }
 }
+
+export const GET = guarded(['invoices.view', 'bills.view', 'expenses.view'], handleGet)
+export const PUT = guarded(['invoices.edit', 'bills.edit', 'expenses.edit'], handlePut)
+export const DELETE = guarded(['invoices.edit', 'bills.edit', 'expenses.edit'], handleDelete)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { postPaymentToLedger } from '@/lib/accounting/document-posting'
 import { replacePaymentAllocations } from '@/lib/accounting/payment-allocations'
@@ -10,7 +11,7 @@ import { resolvePaymentMethod } from '@/lib/product-parity/payment-methods'
 interface ReceivePaymentInput {invoiceId:string;amount:number;cashAmount?:number;creditAmount?:number;creditIds?:string[]}
 const money=(value:number)=>Math.round(value*10_000)/10_000
 
-export async function POST(request:Request){
+async function handlePost(request:Request){
   try{
     await requireAuth();const companyId=await resolveCompanyId(),body=await request.json(),entries:ReceivePaymentInput[]=body.allocations??body.payments??[]
     if(!Array.isArray(entries)||!entries.length)return Response.json({error:'allocations array is required'},{status:400})
@@ -31,3 +32,5 @@ export async function POST(request:Request){
     return Response.json(result.data,{status:201})
   }catch(error){if(error instanceof Error&&error.message==='Unauthorized')return Response.json({error:'Unauthorized'},{status:401});return Response.json({error:error instanceof Error?error.message:String(error)},{status:400})}
 }
+
+export const POST = guarded('payments.edit', handlePost)

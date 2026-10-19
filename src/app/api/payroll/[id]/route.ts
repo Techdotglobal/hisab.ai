@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getPayrollRepository } from '@/lib/db/provider'
 import { prisma } from '@/lib/prisma'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -14,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePut(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -32,3 +33,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('payroll.view', handleGet)
+export const PUT = guarded('payroll.manage', handlePut)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin as requireAuth } from '@/lib/product-parity/permissions'
 import { getQuickBooksSyncSettings, saveQuickBooksSyncSettings, syncQuickBooks } from '@/lib/accounting/quickbooks-sync'
 import { apiError } from '@/lib/import-export/api-helpers'
@@ -8,7 +9,7 @@ function nextRun(cron: string | null): string {
   return new Date(Date.now() + interval).toISOString()
 }
 
-export async function POST() {
+async function handlePost() {
   try {
     const user = await requireAuth(); const settings = await getQuickBooksSyncSettings(user.companyId)
     if (!settings.scheduleEnabled) return Response.json({ skipped: true, reason: 'Scheduling is disabled.' })
@@ -18,3 +19,5 @@ export async function POST() {
     return Response.json(result)
   } catch (error) { return apiError(error) }
 }
+
+export const POST = guarded('integrations.manage', handlePost)

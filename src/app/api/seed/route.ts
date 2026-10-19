@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { seedQaData } from '@/lib/qa-seed'
 
@@ -5,7 +6,7 @@ function isQaSeedEnabled(): boolean {
   return process.env.NODE_ENV === 'development' || process.env.ENABLE_QA_SEED === 'true'
 }
 
-export async function POST() {
+async function handlePost() {
   if (!isQaSeedEnabled()) {
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
@@ -24,3 +25,5 @@ export async function POST() {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('settings.manage', handlePost)

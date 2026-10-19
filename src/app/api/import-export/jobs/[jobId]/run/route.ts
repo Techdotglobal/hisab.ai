@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { getImportJob } from '@/lib/import-export/jobs/import-job.service'
 import { resolveCompanyId } from '@/lib/tenant'
@@ -8,7 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const TERMINAL_IMPORT_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
-export async function POST(_request: Request, { params }: { params: Promise<{ jobId: string }> }) {
+async function handlePost(_request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const user = await requireAccountingAdmin(); const { jobId } = await params; const job = await getImportJob(jobId)
     if (!job) return Response.json({ error: 'Job not found' }, { status: 404 })
@@ -44,3 +45,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ jo
     return Response.json({ jobId: persistedJob.id, platformJobId: queued.id, status: persistedJob.status, totalRows: persistedJob.totalRows, processedRows: persistedJob.processedRows }, { status: 202 })
   } catch (error) { return apiError(error) }
 }
+
+export const POST = guarded('imports.run', handlePost)

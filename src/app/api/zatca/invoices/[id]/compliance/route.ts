@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { processZatcaInvoice } from '@/lib/zatca/invoice-service'
 import { validateXmlCompliance } from '@/lib/zatca/validation/xml-compliance'
@@ -8,7 +9,7 @@ import { resolveCompanyId } from '@/lib/tenant'
  * GET /api/zatca/invoices/[id]/compliance
  * Offline XML compliance review against ZATCA UBL requirements.
  */
-export async function GET(
+async function handleGet(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -52,3 +53,5 @@ export async function GET(
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

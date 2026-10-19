@@ -9,6 +9,12 @@ export interface AuditLogInput {
   details?: Record<string, unknown> | null
   userId?: string | null
   companyId?: string
+  /** Previous / new values of the changed fields. Never put secrets in here. */
+  before?: Record<string, unknown> | null
+  after?: Record<string, unknown> | null
+  reason?: string | null
+  ipAddress?: string | null
+  requestId?: string | null
 }
 
 export async function logAudit(input: AuditLogInput): Promise<void> {
@@ -22,6 +28,11 @@ export async function logAudit(input: AuditLogInput): Promise<void> {
     entity_type: input.entityType,
     entity_id: input.entityId ?? null,
     details: input.details ?? null,
+    before_state: input.before ?? null,
+    after_state: input.after ?? null,
+    reason: input.reason ?? null,
+    ip_address: input.ipAddress ?? null,
+    request_id: input.requestId ?? null,
   })
 
   if (error) throw error

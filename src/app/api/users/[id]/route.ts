@@ -1,37 +1,33 @@
-import { authzErrorResponse, requireRole } from '@/lib/authz'
-import { deleteAppUser, updateAppUser } from '@/lib/supabase/auth-users'
+import { authzErrorResponse } from '@/lib/authz'
+import { requireAnyPermission } from '@/lib/permissions/server'
+import { accessErrorResponse, deleteUserAsActor, updateUserAsActor } from '@/lib/permissions/service'
 
+// The specific capability (users.edit / roles.assign / users.deactivate) is checked per field inside
+// updateUserAsActor against the target's real, company-scoped membership.
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await requireRole(['OWNER', 'ADMIN'])
+    const ctx = await requireAnyPermission('users.edit', 'roles.assign', 'users.deactivate')
     const { id } = await params
     const body = await request.json()
-
-    const user = await updateAppUser(id, session.companyId, {
-      name: body.name,
-      role: body.role,
-      isActive: body.isActive,
-      password: body.password,
-    })
-
+    const user = await updateUserAsActor(
+      ctx,
+      id,
+      { name: body.name, role: body.role, isActive: body.isActive, password: body.password },
+      request,
+    )
     return Response.json(user)
   } catch (error) {
-    return authzErrorResponse(error)
+    return accessErrorResponse(error) ?? authzErrorResponse(error)
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const currentUser = await requireRole(['OWNER', 'ADMIN'])
+    const ctx = await requireAnyPermission('users.deactivate')
     const { id } = await params
-
-    if (currentUser.id === id) {
-      return Response.json({ error: 'Cannot delete your own account' }, { status: 400 })
-    }
-
-    await deleteAppUser(id, currentUser.companyId)
+    await deleteUserAsActor(ctx, id, request)
     return Response.json({ success: true })
   } catch (error) {
-    return authzErrorResponse(error)
+    return accessErrorResponse(error) ?? authzErrorResponse(error)
   }
 }

@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireZatcaOwner } from '@/lib/zatca/authz'
 import { ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { deleteLocalCredentials } from '@/lib/zatca/connection/credentials'
 import type { ZatcaEnvironment } from '@/lib/db/prisma-types'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireZatcaOwner()
     const body = await request.json().catch(() => ({}))
@@ -34,3 +35,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('integrations.manage', handlePost)

@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getNextSequence } from '@/lib/sequences'
 
 const VALID_CATEGORIES = ['Travel', 'Meals', 'Office Supplies', 'Utilities', 'Software', 'Equipment', 'Marketing', 'Other']
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const { rows } = await request.json()
@@ -65,3 +66,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('expenses.edit', handlePost)

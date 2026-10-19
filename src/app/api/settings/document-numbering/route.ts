@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import {
   buildPreview,
@@ -8,7 +9,7 @@ import {
 } from '@/lib/document-numbering/service'
 import { DOCUMENT_TYPE_DEFAULTS } from '@/lib/document-numbering/types'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const sequences = await listDocumentSequences()
@@ -62,7 +63,7 @@ export async function GET() {
   }
 }
 
-export async function PUT(request: Request) {
+async function handlePut(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -112,3 +113,6 @@ export async function PUT(request: Request) {
     return Response.json({ error: message }, { status })
   }
 }
+
+export const GET = guarded('settings.view', handleGet)
+export const PUT = guarded('settings.manage', handlePut)

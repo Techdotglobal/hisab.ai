@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getRecentAuditLogs } from '@/lib/zatca/audit'
 import { getZatcaDashboardStats, getZatcaOperationalSummary, getZatcaRecentActivity } from '@/lib/zatca/monitoring'
 import { getSandboxTestHistory } from '@/lib/zatca/testing/sandbox-runner'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
 
@@ -23,3 +24,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

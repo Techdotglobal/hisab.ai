@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { toCamel } from '@/lib/api/db-transform'
 import { postBillToLedger } from '@/lib/accounting/document-posting'
@@ -5,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import { getNextSequence } from '@/lib/sequences'
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const companyId = await resolveCompanyId()
@@ -100,3 +101,5 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('bills.edit', handlePost)

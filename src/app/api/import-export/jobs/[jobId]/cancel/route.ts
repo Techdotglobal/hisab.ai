@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin as requireAuth } from '@/lib/product-parity/permissions'
 import {
   cancelImportJob,
 } from '@/lib/import-export/jobs/import-job.service'
 import { apiError } from '@/lib/import-export/api-helpers'
 
-export async function POST(
+async function handlePost(
   _request: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
@@ -20,3 +21,5 @@ export async function POST(
     return apiError(error)
   }
 }
+
+export const POST = guarded('imports.run', handlePost)

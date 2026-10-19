@@ -1,34 +1,27 @@
-import { authzErrorResponse, requireRole } from '@/lib/authz'
-import { createAppUser, listAppUsers } from '@/lib/supabase/auth-users'
+import { authzErrorResponse } from '@/lib/authz'
+import { requirePermission } from '@/lib/permissions/server'
+import { accessErrorResponse, createUserAsActor, listUsersWithAccess } from '@/lib/permissions/service'
 
 export async function GET() {
   try {
-    const session = await requireRole(['OWNER', 'ADMIN'])
-    return Response.json(await listAppUsers(session.companyId))
+    const ctx = await requirePermission('users.view')
+    return Response.json(await listUsersWithAccess(ctx.companyId))
   } catch (error) {
-    return authzErrorResponse(error)
+    return accessErrorResponse(error) ?? authzErrorResponse(error)
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const session = await requireRole(['OWNER', 'ADMIN'])
+    const ctx = await requirePermission('users.create')
     const body = await request.json()
-
-    if (!body.email || !body.password) {
-      return Response.json({ error: 'email and password required' }, { status: 400 })
-    }
-
-    const user = await createAppUser({
-      name: body.name,
-      email: body.email,
-      password: body.password,
-      role: body.role || 'ACCOUNTANT',
-      companyId: session.companyId,
-    })
-
+    const user = await createUserAsActor(
+      ctx,
+      { email: body.email, password: body.password, name: body.name, role: body.role },
+      request,
+    )
     return Response.json(user, { status: 201 })
   } catch (error) {
-    return authzErrorResponse(error)
+    return accessErrorResponse(error) ?? authzErrorResponse(error)
   }
 }

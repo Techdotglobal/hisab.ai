@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getVendorRepository } from '@/lib/db/provider'
 import { logAudit } from '@/lib/audit/log'
 import { requireRole } from '@/lib/authz'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -15,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePut(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const { id } = await params
@@ -44,7 +45,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleDelete(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -57,3 +58,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('vendors.view', handleGet)
+export const PUT = guarded('vendors.edit', handlePut)
+export const DELETE = guarded('vendors.edit', handleDelete)

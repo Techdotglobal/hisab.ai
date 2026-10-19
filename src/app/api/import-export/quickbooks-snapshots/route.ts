@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { apiError } from '@/lib/import-export/api-helpers'
 import { resolveCompanyId } from '@/lib/tenant'
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 /** List this company's QuickBooks snapshots. */
-export async function GET() {
+async function handleGet() {
   try {
     await requireAccountingAdmin()
     const companyId = await resolveCompanyId()
@@ -39,7 +40,7 @@ export async function GET() {
 }
 
 /** Start a new raw-snapshot extraction for the connected QuickBooks company. */
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAccountingAdmin()
     const companyId = await resolveCompanyId()
@@ -82,3 +83,6 @@ export async function POST(request: Request) {
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)
+export const POST = guarded('imports.run', handlePost)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { apiError } from '@/lib/import-export/api-helpers'
 import {
@@ -34,7 +35,7 @@ function parseActivityCursors(request: Request, url: URL): MigrationActivityCurs
 }
 
 /** Detect or list QuickBooks migration sessions. Never creates one. */
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAccountingAdmin()
     const url = new URL(request.url)
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
 }
 
 /** Create a persistent QuickBooks migration session. Rejects if one is already active. */
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAccountingAdmin()
     const body = await request.json() as {
@@ -118,3 +119,6 @@ export async function POST(request: Request) {
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)
+export const POST = guarded('imports.run', handlePost)

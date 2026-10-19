@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { submitWorkflow, WorkflowError } from '@/lib/workflow/engine'
 import type { WorkflowEntityType } from '@/lib/workflow/types'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -33,3 +34,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('dashboard.view', handlePost)

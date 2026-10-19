@@ -2,17 +2,23 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { ForbiddenError, requireRole } from '@/lib/authz'
+import { requirePermission } from '@/lib/permissions/server'
+import type { PermissionKey } from '@/lib/permissions/catalog'
 import type { AppUser } from '@/lib/auth'
 import type { CompanyRole } from '@/lib/db/types'
 import { logger } from '@/lib/ops/logger'
 import { AccountingIntegrationException } from '../utils/exceptions'
-import {
-  assertIntegrationPermission,
-  type IntegrationPermission,
-} from './permissions'
+import { IntegrationPermission } from './permissions'
 import { integrationErrorLogContext } from './error-logging'
 
 const COMPANY_ROLES: CompanyRole[] = ['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'EMPLOYEE', 'AUDITOR']
+
+const INTEGRATION_PERMISSION_MAP: Record<IntegrationPermission, PermissionKey> = {
+  [IntegrationPermission.VIEW]: 'imports.view',
+  [IntegrationPermission.CONNECT]: 'integrations.manage',
+  [IntegrationPermission.DISCONNECT]: 'integrations.manage',
+  [IntegrationPermission.MANAGE]: 'integrations.manage',
+}
 
 export interface IntegrationRequestContext {
   request: Request
@@ -33,7 +39,8 @@ export function integrationApiHandler(
     try {
       const user = await requireRole(COMPANY_ROLES)
       context = { correlationId, request, user, tenantId: user.companyId }
-      assertIntegrationPermission(user.role, permission)
+      // Central RBAC (individual grants + delegation aware) replaces the old static role map.
+      await requirePermission(INTEGRATION_PERMISSION_MAP[permission])
       const handlerResponse = await handler(context as IntegrationRequestContext)
       const response = new NextResponse(handlerResponse.body, {
         status: handlerResponse.status,

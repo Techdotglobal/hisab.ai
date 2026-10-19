@@ -4,15 +4,17 @@ import { useState } from 'react'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
+import { DrilldownDrawer, DrillAmount, type DrilldownParams } from '@/components/reports/DrilldownDrawer'
+import { DepartmentBreakdownPanel } from '@/components/reports/DepartmentBreakdownPanel'
 import { ReportActions } from '@/components/data-tools/report-actions'
 import type { ExportColumn } from '@/lib/export/table-export'
 
 interface PLData {
   period: { from: string; to: string }
-  revenue: { total: number; byAccount: { name: string; amount: number }[] }
+  revenue: { total: number; byAccount: { accountId?: string; name: string; amount: number }[] }
   cogs: { total: number }
   grossProfit: number
-  expenses: { total: number; byAccount: { name: string; amount: number }[] }
+  expenses: { total: number; byAccount: { accountId?: string; name: string; amount: number }[] }
   netProfit: number
 }
 
@@ -23,6 +25,10 @@ export default function ProfitLossPage() {
   const [to, setTo] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<PLData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [drill, setDrill] = useState<DrilldownParams | null>(null)
+  const range = data ? { from: data.period.from.slice(0, 10), to: data.period.to.slice(0, 10) } : { from, to }
+  const openMetric = (metric: string) => setDrill({ metric, ...range })
+  const openAccount = (accountId?: string) => accountId && setDrill({ metric: 'account', accountId, ...range })
 
   async function load() {
     setLoading(true)
@@ -83,14 +89,14 @@ export default function ProfitLossPage() {
           {/* Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Total Revenue', value: data.revenue.total, color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'Cost of Sales', value: data.cogs.total, color: 'text-orange-600', bg: 'bg-orange-50' },
-              { label: 'Total Expenses', value: data.expenses.total, color: 'text-red-600', bg: 'bg-red-50' },
-              { label: 'Net Profit', value: data.netProfit, color: data.netProfit >= 0 ? 'text-indigo-600' : 'text-red-600', bg: data.netProfit >= 0 ? 'bg-indigo-50' : 'bg-red-50' },
+              { label: 'Total Revenue', metric: 'pl.revenue', value: data.revenue.total, color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'Cost of Sales', metric: 'pl.cogs', value: data.cogs.total, color: 'text-orange-600', bg: 'bg-orange-50' },
+              { label: 'Total Expenses', metric: 'pl.expenses', value: data.expenses.total, color: 'text-red-600', bg: 'bg-red-50' },
+              { label: 'Net Profit', metric: 'pl.net_profit', value: data.netProfit, color: data.netProfit >= 0 ? 'text-indigo-600' : 'text-red-600', bg: data.netProfit >= 0 ? 'bg-indigo-50' : 'bg-red-50' },
             ].map((item) => (
               <div key={item.label} className={`${item.bg} rounded-xl p-4`}>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{item.label}</p>
-                <p className={`text-xl font-bold mt-1 ${item.color}`}>{formatCurrency(item.value)}</p>
+                <p className={`text-xl font-bold mt-1 ${item.color}`}><DrillAmount label={item.label} onClick={() => openMetric(item.metric)}>{formatCurrency(item.value)}</DrillAmount></p>
               </div>
             ))}
           </div>
@@ -130,22 +136,22 @@ export default function ProfitLossPage() {
                   <td />
                 </tr>
                 {data.revenue.byAccount.map((acc) => (
-                  <tr key={acc.name} className="border-b">
+                  <tr key={acc.accountId ?? acc.name} className="border-b">
                     <td className="px-5 py-2 pl-10 text-gray-600">{acc.name}</td>
-                    <td className="px-5 py-2 text-right text-gray-800">{formatCurrency(acc.amount)}</td>
+                    <td className="px-5 py-2 text-right text-gray-800">{acc.accountId ? <DrillAmount label={acc.name} onClick={() => openAccount(acc.accountId)}>{formatCurrency(acc.amount)}</DrillAmount> : formatCurrency(acc.amount)}</td>
                   </tr>
                 ))}
                 <tr className="border-b bg-gray-50">
                   <td className="px-5 py-2.5 font-semibold text-gray-700 pl-10">Total Revenue</td>
-                  <td className="px-5 py-2.5 text-right font-semibold text-green-600">{formatCurrency(data.revenue.total)}</td>
+                  <td className="px-5 py-2.5 text-right font-semibold text-green-600"><DrillAmount label="Total revenue" onClick={() => openMetric('pl.revenue')}>{formatCurrency(data.revenue.total)}</DrillAmount></td>
                 </tr>
                 <tr className="border-b">
                   <td className="px-5 py-2.5 font-semibold text-orange-700">COST OF SALES</td>
-                  <td className="px-5 py-2.5 text-right font-semibold text-orange-600">({formatCurrency(data.cogs.total)})</td>
+                  <td className="px-5 py-2.5 text-right font-semibold text-orange-600"><DrillAmount label="Cost of sales" onClick={() => openMetric('pl.cogs')}>({formatCurrency(data.cogs.total)})</DrillAmount></td>
                 </tr>
                 <tr className="border-b bg-gray-50 font-bold">
                   <td className="px-5 py-3 text-gray-800">GROSS PROFIT</td>
-                  <td className="px-5 py-3 text-right text-gray-900">{formatCurrency(data.grossProfit)}</td>
+                  <td className="px-5 py-3 text-right text-gray-900"><DrillAmount label="Gross profit" onClick={() => openMetric('pl.gross_profit')}>{formatCurrency(data.grossProfit)}</DrillAmount></td>
                 </tr>
                 <tr className="border-b bg-red-50">
                   <td className="px-5 py-2.5 font-semibold text-red-700 flex items-center gap-2">
@@ -154,19 +160,19 @@ export default function ProfitLossPage() {
                   <td />
                 </tr>
                 {data.expenses.byAccount.map((item) => (
-                  <tr key={item.name} className="border-b">
+                  <tr key={item.accountId ?? item.name} className="border-b">
                     <td className="px-5 py-2 pl-10 text-gray-600">{item.name}</td>
-                    <td className="px-5 py-2 text-right text-gray-800">({formatCurrency(item.amount)})</td>
+                    <td className="px-5 py-2 text-right text-gray-800">{item.accountId ? <DrillAmount label={item.name} onClick={() => openAccount(item.accountId)}>({formatCurrency(item.amount)})</DrillAmount> : <>({formatCurrency(item.amount)})</>}</td>
                   </tr>
                 ))}
                 <tr className="border-b bg-gray-50">
                   <td className="px-5 py-2.5 font-semibold pl-10 text-gray-700">Total Expenses</td>
-                  <td className="px-5 py-2.5 text-right font-semibold text-red-600">({formatCurrency(data.expenses.total)})</td>
+                  <td className="px-5 py-2.5 text-right font-semibold text-red-600"><DrillAmount label="Total expenses" onClick={() => openMetric('pl.expenses')}>({formatCurrency(data.expenses.total)})</DrillAmount></td>
                 </tr>
                 <tr className={`${data.netProfit >= 0 ? 'bg-indigo-50' : 'bg-red-50'} font-bold text-base`}>
                   <td className="px-5 py-4 text-gray-900">NET PROFIT / (LOSS)</td>
                   <td className={`px-5 py-4 text-right ${data.netProfit >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
-                    {formatCurrency(data.netProfit)}
+                    <DrillAmount label="Net profit" onClick={() => openMetric('pl.net_profit')}>{formatCurrency(data.netProfit)}</DrillAmount>
                   </td>
                 </tr>
               </tbody>
@@ -174,6 +180,10 @@ export default function ProfitLossPage() {
           </div>
         </div>
       )}
+
+      {data && <div className="mt-6"><DepartmentBreakdownPanel from={range.from} to={range.to} onDrill={setDrill} /></div>}
+
+      <DrilldownDrawer params={drill} onClose={() => setDrill(null)} />
 
       {!data && !loading && (
         <div className="flex items-center justify-center h-48 text-gray-400 text-sm">

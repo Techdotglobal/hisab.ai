@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { toCamel } from '@/lib/api/db-transform'
 import { resolveTransactionCurrency } from '@/lib/currency/company'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -30,7 +31,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePut(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -91,7 +92,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleDelete(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -117,3 +118,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('bills.view', handleGet)
+export const PUT = guarded('bills.edit', handlePut)
+export const DELETE = guarded('bills.edit', handleDelete)

@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getCustomerRepository } from '@/lib/db/provider'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const facets = await getCustomerRepository().getFilterFacets()
@@ -13,3 +14,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('customers.view', handleGet)

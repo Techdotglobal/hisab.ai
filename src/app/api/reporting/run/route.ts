@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { runReport } from '@/lib/reporting/runner'
 import { runCustomDefinition } from '@/lib/reporting/custom'
 import type { ReportRunRequest } from '@/lib/reporting/types'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const body = await request.json() as ReportRunRequest & { definitionId?: string }
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -52,3 +53,6 @@ export async function GET(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('reports.view', handleGet)
+export const POST = guarded('reports.view', handlePost)

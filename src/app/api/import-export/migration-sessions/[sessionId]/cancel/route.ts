@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { apiError } from '@/lib/import-export/api-helpers'
 import { cancelQuickBooksMigrationSession } from '@/lib/import-export/wizard/migration-session.service'
@@ -5,7 +6,7 @@ import { cancelQuickBooksMigrationSession } from '@/lib/import-export/wizard/mig
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function POST(_request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+async function handlePost(_request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   try {
     await requireAccountingAdmin()
     const { sessionId } = await params
@@ -15,3 +16,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ se
     return apiError(error)
   }
 }
+
+export const POST = guarded('imports.run', handlePost)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { toCamel } from '@/lib/api/db-transform'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -15,7 +16,7 @@ interface StatementEntry {
   balance: number
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -158,3 +159,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('vendors.view', handleGet)

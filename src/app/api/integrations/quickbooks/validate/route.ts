@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { authzErrorResponse, requireRole } from '@/lib/authz'
 import {
   QUICKBOOKS_VALIDATION_MODULES,
@@ -7,7 +8,7 @@ import { validateQuickBooksImports } from '@/lib/quickbooks-validation/service'
 
 const ADMIN_ROLES = ['OWNER', 'ADMIN'] as const
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireRole([...ADMIN_ROLES])
     const body = await request.json() as { modules?: unknown }
@@ -25,3 +26,5 @@ export async function POST(request: Request) {
     return authzErrorResponse(error)
   }
 }
+
+export const POST = guarded('integrations.manage', handlePost)

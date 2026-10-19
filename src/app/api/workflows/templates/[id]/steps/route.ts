@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id: templateId } = await params
@@ -53,3 +54,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('workflows.manage', handlePost)

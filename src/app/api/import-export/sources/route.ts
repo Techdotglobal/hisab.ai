@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { resolveCompanyId } from '@/lib/tenant'
 import { apiError } from '@/lib/import-export/api-helpers'
@@ -5,7 +6,7 @@ import { listImportSources } from '@/lib/import-export/sources/source-registry'
 import { createAccountingIntegrationRuntime } from '@/integrations/accounting/services/container'
 import { Provider } from '@/integrations/accounting/contracts/types'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const tenantId = await resolveCompanyId()
@@ -32,3 +33,5 @@ export async function GET() {
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

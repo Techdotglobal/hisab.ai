@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { toCamel } from '@/lib/api/db-transform'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -29,7 +30,7 @@ function normalizeHeader(header: string) {
   return header.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -170,3 +171,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('banking.edit', handlePost)

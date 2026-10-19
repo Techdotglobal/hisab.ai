@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getInvoiceZatcaResponse } from '@/lib/zatca/submission/status'
 
@@ -5,7 +6,7 @@ import { getInvoiceZatcaResponse } from '@/lib/zatca/submission/status'
  * GET /api/zatca/invoices/:id/response
  * Returns ZATCA submission response metadata (no secrets).
  */
-export async function GET(
+async function handleGet(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -24,3 +25,5 @@ export async function GET(
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

@@ -23,6 +23,7 @@ import {
   InvoiceCreateForm,
   type InvoiceFormState,
 } from '@/components/invoices/invoice-create-form'
+import { TracePanel } from '@/components/reports/TracePanel'
 import { computeDueDate, toDateInputValue } from '@/lib/invoices/payment-terms'
 import { computeDisplayBusinessStatus, formatInvoiceTypeLabel, canEditInvoice, todayDateString, isFutureInvoiceDate } from '@/lib/ui/invoice-status'
 
@@ -804,6 +805,10 @@ export default function InvoicesPage() {
               )}
               <span className="badge bg-slate-50 text-slate-600 border border-slate-200">{formatInvoiceTypeLabel(selectedInvoice.invoiceType)}</span>
             </div>
+            <details className="rounded-xl border border-slate-200 px-4 py-2">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-700">Accounting trail (lines, journal &amp; GL entries, payments, history)</summary>
+              <div className="mt-3"><TracePanel type="invoice" id={selectedInvoice.id} /></div>
+            </details>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><p className="text-xs text-slate-400">Date</p><p className="font-medium">{formatDate(selectedInvoice.date)}</p></div>
               <div><p className="text-xs text-slate-400">Due</p><p className="font-medium">{formatDate(selectedInvoice.dueDate)}</p></div>

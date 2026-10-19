@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { apiError } from '@/lib/import-export/api-helpers'
 import { resolveCompanyId } from '@/lib/tenant'
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 /** Resume a PARTIAL/FAILED snapshot: reset failed/stuck resources and re-enqueue extraction. */
-export async function POST(_request: Request, { params }: { params: Promise<{ snapshotId: string }> }) {
+async function handlePost(_request: Request, { params }: { params: Promise<{ snapshotId: string }> }) {
   try {
     const user = await requireAccountingAdmin()
     const companyId = await resolveCompanyId()
@@ -28,3 +29,5 @@ export async function POST(_request: Request, { params }: { params: Promise<{ sn
     return apiError(error)
   }
 }
+
+export const POST = guarded('imports.run', handlePost)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { generateInvoicePdf } from '@/lib/invoices/pdf'
 
@@ -7,7 +8,7 @@ import { generateInvoicePdf } from '@/lib/invoices/pdf'
  * ?disposition=inline — open in browser (View PDF)
  * ?disposition=attachment — download (default)
  */
-export async function GET(
+async function handleGet(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -37,3 +38,5 @@ export async function GET(
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

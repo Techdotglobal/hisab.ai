@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import PDFDocument from 'pdfkit'
 import { requireAccountingRead as requireAuth } from '@/lib/product-parity/permissions'
 import { migrationReportToCsv, type MigrationReport } from '@/lib/import-export/migration-report'
 import { buildQuickBooksMigrationReport } from '@/lib/import-export/quickbooks/migration-report-service'
 
-export async function GET() {
+async function handleGet() {
   const user = await requireAuth()
   return Response.json(await buildQuickBooksMigrationReport(user.companyId), { headers:{ 'Cache-Control':'no-store' } })
 }
@@ -38,7 +39,7 @@ function pdf(report: MigrationReport): Promise<Buffer> {
   })
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   await requireAuth()
   const body = await request.json() as { format?: string; report?: MigrationReport }
   if (!body.report || !['pdf', 'csv', 'json'].includes(body.format ?? '')) return Response.json({ error: 'A report and format (pdf, csv, or json) are required.' }, { status: 400 })
@@ -49,3 +50,6 @@ export async function POST(request: Request) {
   const content = await pdf(body.report)
   return new Response(new Uint8Array(content), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}.pdf"` } })
 }
+
+export const GET = guarded('imports.view', handleGet)
+export const POST = guarded('imports.run', handlePost)

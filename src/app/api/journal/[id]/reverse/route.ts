@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { reverseJournalEntry } from '@/lib/accounting/journal-operations'
 import { extractClientIp } from '@/lib/accounting/posting-audit'
 import { PostingValidationError } from '@/lib/accounting/validation'
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const { id } = await params
@@ -33,3 +34,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('journals.post', handlePost)

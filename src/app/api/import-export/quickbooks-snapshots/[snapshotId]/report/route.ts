@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { apiError } from '@/lib/import-export/api-helpers'
 import { resolveCompanyId } from '@/lib/tenant'
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 /** Human-readable snapshot report (COMPLETE / UNSUPPORTED / FAILED, separated). */
-export async function GET(_request: Request, { params }: { params: Promise<{ snapshotId: string }> }) {
+async function handleGet(_request: Request, { params }: { params: Promise<{ snapshotId: string }> }) {
   try {
     await requireAccountingAdmin()
     const companyId = await resolveCompanyId()
@@ -25,3 +26,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ sna
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

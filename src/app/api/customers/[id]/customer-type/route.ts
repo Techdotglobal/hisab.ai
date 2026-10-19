@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { productParityErrorResponse } from '@/lib/product-parity/api-errors'
 import { requireAccountingWrite } from '@/lib/product-parity/permissions'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePatch(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAccountingWrite()
     const { id } = await params
@@ -18,3 +19,5 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return Response.json(data)
   } catch (error) { return productParityErrorResponse(error) }
 }
+
+export const PATCH = guarded('customers.edit', handlePatch)

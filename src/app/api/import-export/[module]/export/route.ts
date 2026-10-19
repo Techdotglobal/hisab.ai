@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { resolveCompanyId } from '@/lib/tenant'
 import {
@@ -12,7 +13,7 @@ import { filtersFromSearchParams, resolveModuleParam } from '../../_lib/module-p
 import type { FileFormat } from '@/lib/import-export/types'
 import { MAX_EXPORT_ROWS } from '@/lib/import-export/types'
 
-export async function GET(
+async function handleGet(
   request: Request,
   { params }: { params: Promise<{ module: string }> },
 ) {
@@ -51,3 +52,5 @@ export async function GET(
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

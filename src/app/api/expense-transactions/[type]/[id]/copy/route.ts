@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireRole, authzErrorResponse } from '@/lib/authz'
 import { logAudit } from '@/lib/audit/log'
 import { getNextSequence } from '@/lib/sequences'
@@ -9,7 +10,7 @@ function copyRow(row: Record<string, unknown>, omit: string[]) {
   return next
 }
 
-export async function POST(_request: Request, context: { params: Promise<{ type: string; id: string }> }) {
+async function handlePost(_request: Request, context: { params: Promise<{ type: string; id: string }> }) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const { type, id } = await context.params
@@ -44,3 +45,5 @@ export async function POST(_request: Request, context: { params: Promise<{ type:
     return Response.json({ error: 'Copy is not available for this transaction type' }, { status: 400 })
   } catch (error) { return authzErrorResponse(error) }
 }
+
+export const POST = guarded('expenses.edit', handlePost)

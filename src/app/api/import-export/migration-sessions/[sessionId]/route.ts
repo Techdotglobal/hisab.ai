@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAccountingAdmin } from '@/lib/product-parity/permissions'
 import { apiError } from '@/lib/import-export/api-helpers'
 import {
@@ -31,7 +32,7 @@ function parseActivityCursors(request: Request, url: URL): MigrationActivityCurs
   }
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+async function handleGet(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   try {
     await requireAccountingAdmin()
     const { sessionId } = await params
@@ -60,7 +61,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+async function handlePatch(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   try {
     await requireAccountingAdmin()
     const { sessionId } = await params
@@ -86,3 +87,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ se
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)
+export const PATCH = guarded('imports.run', handlePatch)

@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireRole, authzErrorResponse } from '@/lib/authz'
 import { logAudit } from '@/lib/audit/log'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const TABLES: Record<string, string> = { BILL: 'bills', EXPENSE: 'expenses', PURCHASE_ORDER: 'purchase_orders', SUPPLIER_CREDIT: 'vendor_credits', CHEQUE: 'cheques' }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ type: string; id: string }> }) {
+async function handleDelete(_request: Request, context: { params: Promise<{ type: string; id: string }> }) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const { type, id } = await context.params
@@ -18,3 +19,5 @@ export async function DELETE(_request: Request, context: { params: Promise<{ typ
     return Response.json({ success: true })
   } catch (error) { return authzErrorResponse(error) }
 }
+
+export const DELETE = guarded('expenses.edit', handleDelete)

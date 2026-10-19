@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { authzErrorResponse, requireRole } from '@/lib/authz'
 import { logAudit } from '@/lib/audit/log'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -20,7 +21,7 @@ function toApiTaxConfig(row: Record<string, unknown>) {
   }
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'AUDITOR'])
     const companyId = user.companyId
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const companyId = user.companyId
@@ -101,3 +102,6 @@ export async function POST(request: Request) {
     return authzErrorResponse(error)
   }
 }
+
+export const GET = guarded('tax.view', handleGet)
+export const POST = guarded('tax.manage', handlePost)

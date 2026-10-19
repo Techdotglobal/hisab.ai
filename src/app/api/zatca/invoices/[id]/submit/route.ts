@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireZatcaSubmit } from '@/lib/zatca/authz'
 import { ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { ZatcaError } from '@/lib/zatca/errors'
@@ -7,7 +8,7 @@ import { submitInvoice } from '@/lib/zatca/submission'
  * POST /api/zatca/invoices/:id/submit
  * Full ZATCA submission workflow for an invoice.
  */
-export async function POST(
+async function handlePost(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -36,3 +37,5 @@ export async function POST(
     return Response.json({ error: String(error) }, { status: 422 })
   }
 }
+
+export const POST = guarded('invoices.edit', handlePost)

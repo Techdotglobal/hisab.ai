@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { deleteCompanyRow, getCompanyRow, insertCompanyRow, listCompanyRows, updateCompanyRow } from '@/lib/api/crud'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+async function handlePut(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -74,7 +75,7 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function handleDelete(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -89,3 +90,8 @@ export async function DELETE(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('employees.view', handleGet)
+export const POST = guarded('employees.manage', handlePost)
+export const PUT = guarded('employees.manage', handlePut)
+export const DELETE = guarded('employees.manage', handleDelete)

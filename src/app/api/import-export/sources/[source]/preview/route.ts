@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getModuleDefinition } from '@/lib/import-export/registry/module-registry'
 import { getImportSource, withSourcePreviewSession } from '@/lib/import-export/sources/source-registry'
@@ -18,7 +19,7 @@ import { logger } from '@/lib/ops/logger'
 const PREVIEW_SAMPLE_SIZE = 10
 const PREVIEW_CONCURRENCY = 3
 
-export async function POST(
+async function handlePost(
   request: Request,
   { params }: { params: Promise<{ source: string }> },
 ) {
@@ -127,3 +128,5 @@ export async function POST(
     }
   })
 }
+
+export const POST = guarded('imports.run', handlePost)

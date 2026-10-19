@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getInvoiceRepository } from '@/lib/db/provider'
 
@@ -31,7 +32,7 @@ async function createAdjustment(
 /**
  * POST /api/invoices/:id/debit-note
  */
-export async function POST(
+async function handlePost(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -50,3 +51,5 @@ export async function POST(
     return Response.json({ error: String(error) }, { status: 422 })
   }
 }
+
+export const POST = guarded('invoices.edit', handlePost)

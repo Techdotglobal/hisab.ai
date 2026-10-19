@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getCurrencySettings, upsertCurrencySettings, getCurrencyRoles } from '@/lib/currency/fx-accounts'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const [settings, roles] = await Promise.all([
@@ -17,7 +18,7 @@ export async function GET() {
   }
 }
 
-export async function PATCH(request: Request) {
+async function handlePatch(request: Request) {
   try {
     await requireAuth()
     const body = await request.json()
@@ -36,3 +37,6 @@ export async function PATCH(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('settings.view', handleGet)
+export const PATCH = guarded('settings.manage', handlePatch)

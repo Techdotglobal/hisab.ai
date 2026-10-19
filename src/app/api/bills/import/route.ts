@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { resolveCompanyId } from '@/lib/tenant'
 import { getNextSequence } from '@/lib/sequences'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const companyId = await resolveCompanyId()
@@ -93,3 +94,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('bills.edit', handlePost)

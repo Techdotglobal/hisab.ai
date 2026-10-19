@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { authzErrorResponse } from '@/lib/authz'
 import { createApiKey } from '@/lib/platform/api-keys/auth'
@@ -5,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import { requirePlatformAdmin } from '@/lib/platform/require-admin'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -22,7 +23,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requirePlatformAdmin()
     const body = await request.json()
@@ -38,3 +39,6 @@ export async function POST(request: Request) {
     return authzErrorResponse(error)
   }
 }
+
+export const GET = guarded('integrations.manage', handleGet)
+export const POST = guarded('integrations.manage', handlePost)

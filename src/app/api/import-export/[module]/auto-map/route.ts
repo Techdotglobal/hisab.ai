@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { autoMapColumns } from '@/lib/import-export/mapping/auto-mapper'
 import { getModuleDefinition } from '@/lib/import-export/registry/module-registry'
 import { apiError } from '@/lib/import-export/api-helpers'
 import { resolveModuleParam } from '../../_lib/module-params'
 
-export async function POST(
+async function handlePost(
   request: Request,
   { params }: { params: Promise<{ module: string }> },
 ) {
@@ -27,3 +28,5 @@ export async function POST(
     return apiError(error)
   }
 }
+
+export const POST = guarded('imports.run', handlePost)

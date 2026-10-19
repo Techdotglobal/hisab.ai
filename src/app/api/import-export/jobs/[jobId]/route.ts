@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getImportJob } from '@/lib/import-export/jobs/import-job.service'
 import { apiError } from '@/lib/import-export/api-helpers'
@@ -6,7 +7,7 @@ import { logger } from '@/lib/ops/logger'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function GET(
+async function handleGet(
   _request: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
@@ -80,3 +81,5 @@ export async function GET(
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

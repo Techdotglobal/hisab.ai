@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processDueRecurringTransactions } from '@/lib/recurring-transactions/service'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   const secret = process.env.CRON_SECRET
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -15,3 +16,5 @@ export async function POST(request: Request) {
   const results = await processDueRecurringTransactions(body.companyId, body.systemUserId, body.limit)
   return Response.json({ processed: results.length, results })
 }
+
+export const POST = guarded(['invoices.edit', 'bills.edit', 'expenses.edit'], handlePost)

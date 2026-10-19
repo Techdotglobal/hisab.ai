@@ -1,8 +1,9 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { listImportHistory } from '@/lib/import-export/history/import-history.service'
 import { apiError, parseBooleanParam, parseListParam } from '@/lib/import-export/api-helpers'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -25,3 +26,5 @@ export async function GET(request: Request) {
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

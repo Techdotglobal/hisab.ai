@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { listNotifications, markRead, markAllRead, getUnreadCount, upsertPreference } from '@/lib/platform/notifications/service'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const user = await requireAuth()
     const { searchParams } = new URL(request.url)
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function PATCH(request: Request) {
+async function handlePatch(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -55,3 +56,6 @@ export async function PATCH(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('dashboard.view', handleGet)
+export const PATCH = guarded('platform.manage', handlePatch)

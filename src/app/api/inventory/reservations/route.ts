@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { createInventoryReservation, releaseInventoryReservation } from '@/lib/inventory/reservations'
 import { InventoryError } from '@/lib/inventory/movements'
 import { listCompanyRows } from '@/lib/api/crud'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const rows = await listCompanyRows('inventory_reservations', { orderBy: 'reserved_at' })
@@ -16,7 +17,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -48,3 +49,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('inventory.view', handleGet)
+export const POST = guarded('inventory.edit', handlePost)

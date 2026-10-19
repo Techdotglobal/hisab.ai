@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { findSystemAccount } from '@/lib/accounting/posting-service'
 import { queryLedgerEntries } from '@/lib/accounting/ledger'
@@ -6,7 +7,7 @@ import { resolveCompanyId } from '@/lib/tenant'
 
 type TaxRow = { taxAmount: number; subtotal: number }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -86,3 +87,5 @@ export async function GET(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('tax.view', handleGet)

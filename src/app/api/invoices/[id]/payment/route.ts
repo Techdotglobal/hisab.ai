@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { postPaymentToLedger } from '@/lib/accounting/document-posting'
 import { getCompanyPrimaryCurrency } from '@/lib/currency/company'
@@ -8,7 +9,7 @@ import { resolvePaymentMethod } from '@/lib/product-parity/payment-methods'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { replacePaymentAllocations } from '@/lib/accounting/payment-allocations'
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -54,3 +55,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('payments.edit', handlePost)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { parseCsv } from '@/lib/import-export/parsers/csv-parser'
 import { parseExcel } from '@/lib/import-export/parsers/excel-parser'
@@ -15,7 +16,7 @@ import { apiError } from '@/lib/import-export/api-helpers'
 import { MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES } from '@/lib/import-export/types'
 import { resolveModuleParam } from '../../_lib/module-params'
 
-export async function POST(
+async function handlePost(
   request: Request,
   { params }: { params: Promise<{ module: string }> },
 ) {
@@ -96,3 +97,5 @@ export async function POST(
     return apiError(error)
   }
 }
+
+export const POST = guarded('imports.run', handlePost)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { resolveTransactionCurrency } from '@/lib/currency/company'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -28,7 +29,7 @@ function mapSalesReceipt(row: Record<string, unknown>, customer?: { name?: strin
   }
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -152,3 +153,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)
+export const POST = guarded('invoices.edit', handlePost)

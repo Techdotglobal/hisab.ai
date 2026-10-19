@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import {
   approveWorkflowTask,
@@ -9,7 +10,7 @@ import { syncDocumentApprovalStatus } from '@/lib/workflow/integration'
 import type { WorkflowEntityType } from '@/lib/workflow/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const { id: taskId } = await params
@@ -57,3 +58,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('dashboard.view', handlePost)

@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { loadInvoiceForZatca } from '@/lib/zatca/persistence'
 
@@ -5,7 +6,7 @@ import { loadInvoiceForZatca } from '@/lib/zatca/persistence'
  * GET /api/zatca/invoices/:id/signed-xml
  * Reads signed XML from the same persistence layer used by submission (Supabase repository).
  */
-export async function GET(
+async function handleGet(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -40,3 +41,5 @@ export async function GET(
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

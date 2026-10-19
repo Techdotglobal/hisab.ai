@@ -1,11 +1,12 @@
 ﻿import { requireAuth } from '@/lib/auth'
+import { guarded } from '@/lib/permissions/guard'
 import { resolveTransactionCurrency } from '@/lib/currency/company'
 import { prisma } from '@/lib/prisma'
 import { getNextSequence } from '@/lib/sequences'
 import { resolveCompanyId } from '@/lib/tenant'
 import { maybeStartWorkflow } from '@/lib/workflow/integration'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const body = await request.json()
@@ -103,3 +104,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('expenses.view', handleGet)
+export const POST = guarded('expenses.edit', handlePost)

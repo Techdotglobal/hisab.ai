@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { resolveCompanyId, supabaseDb } from '@/lib/db/repository-utils'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const db = supabaseDb()
@@ -36,3 +37,5 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('invoices.view', handleGet)

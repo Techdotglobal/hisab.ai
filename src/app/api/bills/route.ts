@@ -1,4 +1,5 @@
 ﻿import { requireAuth } from '@/lib/auth'
+import { guarded } from '@/lib/permissions/guard'
 import { postBillToLedger } from '@/lib/accounting/document-posting'
 import { resolveTransactionCurrency } from '@/lib/currency/company'
 import { maybeStartWorkflow } from '@/lib/workflow/integration'
@@ -8,7 +9,7 @@ import { getNextSequence } from '@/lib/sequences'
 import { logAudit } from '@/lib/audit/log'
 import { requireRole } from '@/lib/authz'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const companyId = await resolveCompanyId()
@@ -138,3 +139,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('bills.view', handleGet)
+export const POST = guarded('bills.edit', handlePost)

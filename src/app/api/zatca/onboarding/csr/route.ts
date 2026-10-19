@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireZatcaAdmin } from '@/lib/zatca/authz'
 import { ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { generateAndStoreCsr } from '@/lib/zatca/onboarding/service'
@@ -8,7 +9,7 @@ import type { ZatcaEnvironment } from '@/lib/db/prisma-types'
  * Body: { environment: 'SANDBOX' | 'PRODUCTION' }
  * Generates a ZATCA CSR and stores encrypted credentials.
  */
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireZatcaAdmin()
     const body = await request.json().catch(() => ({}))
@@ -30,3 +31,5 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 422 })
   }
 }
+
+export const POST = guarded('integrations.manage', handlePost)

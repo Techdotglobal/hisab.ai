@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getCustomerRepository } from '@/lib/db/provider'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -13,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePut(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -39,7 +40,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleDelete(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAuth()
     const { id } = await params
@@ -52,3 +53,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('customers.view', handleGet)
+export const PUT = guarded('customers.edit', handlePut)
+export const DELETE = guarded('customers.edit', handleDelete)

@@ -1,12 +1,14 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
+import { parseReportBound } from '@/lib/accounting/ledger-report-math'
 import { buildProfitLossFromLedger } from '@/lib/accounting/trial-balance'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const { searchParams } = new URL(request.url)
-    const from = searchParams.get('from') ? new Date(searchParams.get('from')!) : new Date(new Date().getFullYear(), 0, 1)
-    const to = searchParams.get('to') ? new Date(searchParams.get('to')!) : new Date()
+    const from = parseReportBound(searchParams.get('from'), 'start') ?? new Date(new Date().getFullYear(), 0, 1)
+    const to = parseReportBound(searchParams.get('to'), 'end') ?? new Date()
 
     const report = await buildProfitLossFromLedger({ from, to })
 
@@ -18,3 +20,5 @@ export async function GET(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('reports.view', handleGet)

@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getDashboardRepository } from '@/lib/db/provider'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const data = await getDashboardRepository().getStats()
@@ -14,3 +15,5 @@ export async function GET() {
     return Response.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = guarded('dashboard.view', handleGet)

@@ -118,14 +118,14 @@ describe('route-level authorization', () => {
   const userIdRoute = src('src/app/api/users/[id]/route.ts')
   const transferRoute = src('src/app/api/users/transfer-ownership/route.ts')
 
-  it('list and create users require Owner or Admin', () => {
-    const matches = usersRoute.match(/requireRole\(\['OWNER', 'ADMIN'\]\)/g) ?? []
-    assert.equal(matches.length, 2)
+  it('list and create users are gated by the dedicated users.view / users.create permissions', () => {
+    assert.match(usersRoute, /requirePermission\('users\.view'\)/)
+    assert.match(usersRoute, /requirePermission\('users\.create'\)/)
   })
 
-  it('edit and delete users require Owner or Admin', () => {
-    const matches = userIdRoute.match(/requireRole\(\['OWNER', 'ADMIN'\]\)/g) ?? []
-    assert.equal(matches.length, 2)
+  it('edit and delete users are gated by users.edit / roles.assign / users.deactivate', () => {
+    assert.match(userIdRoute, /requireAnyPermission\('users\.edit', 'roles\.assign', 'users\.deactivate'\)/)
+    assert.match(userIdRoute, /requireAnyPermission\('users\.deactivate'\)/)
   })
 
   it('transfer-ownership requires Owner ONLY — Admin cannot call it', () => {
@@ -141,8 +141,9 @@ describe('route-level authorization', () => {
     assert.match(transferRoute, /fromDisplayRole\(body\.previousOwnerNewRole\)/)
   })
 
-  it('delete route passes the acting company id so ownership can be checked', () => {
-    assert.match(userIdRoute, /deleteAppUser\(id, currentUser\.companyId\)/)
+  it('delete route goes through the company-scoped service, which passes the acting company id', () => {
+    assert.match(userIdRoute, /deleteUserAsActor\(ctx, id, request\)/)
+    assert.match(src('src/lib/permissions/service.ts'), /deleteAppUser\(userId, ctx\.companyId\)/)
   })
 })
 

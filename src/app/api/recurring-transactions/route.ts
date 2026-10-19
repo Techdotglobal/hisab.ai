@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { authzErrorResponse, ForbiddenError } from '@/lib/authz'
 import { createRecurringTemplate, listRecurringTemplates } from '@/lib/recurring-transactions/service'
@@ -10,7 +11,7 @@ function recurringError(error: unknown) {
   return Response.json({ error: message }, { status })
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const user = await requireAuth()
     const access = await requireRecurringPermission(user, 'view')
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   } catch (error) { return recurringError(error) }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const user = await requireAuth()
     const access = await requireRecurringPermission(user, 'create')
@@ -26,3 +27,6 @@ export async function POST(request: Request) {
     return Response.json(template, { status: 201 })
   } catch (error) { return recurringError(error) }
 }
+
+export const GET = guarded(['invoices.view', 'bills.view', 'expenses.view'], handleGet)
+export const POST = guarded(['invoices.edit', 'bills.edit', 'expenses.edit'], handlePost)

@@ -1,7 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireRole, authzErrorResponse } from '@/lib/authz'
 import { formatExpenseTransactionsError, listExpenseTransactions } from '@/lib/expense-transactions/service'
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'AUDITOR'])
     return Response.json(await listExpenseTransactions(user.companyId, request.url))
@@ -12,3 +13,5 @@ export async function GET(request: Request) {
     return authzErrorResponse(error)
   }
 }
+
+export const GET = guarded('expenses.view', handleGet)

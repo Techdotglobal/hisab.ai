@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { getImportJobSkips } from '@/lib/import-export/jobs/import-job.service'
 import { apiError } from '@/lib/import-export/api-helpers'
@@ -7,7 +8,7 @@ function csvValue(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
+async function handleGet(request: Request, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     await requireAuth()
     const { jobId } = await params
@@ -21,3 +22,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)

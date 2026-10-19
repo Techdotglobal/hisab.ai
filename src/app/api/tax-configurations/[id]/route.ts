@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { authzErrorResponse, requireRole } from '@/lib/authz'
 import { logAudit } from '@/lib/audit/log'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -20,7 +21,7 @@ function toApiTaxConfig(row: Record<string, unknown>) {
   }
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'AUDITOR'])
     const companyId = user.companyId
@@ -42,7 +43,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handlePut(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const companyId = user.companyId
@@ -121,7 +122,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handleDelete(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireRole(['OWNER', 'ADMIN', 'ACCOUNTANT', 'MANAGER'])
     const companyId = user.companyId
@@ -155,3 +156,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     return authzErrorResponse(error)
   }
 }
+
+export const GET = guarded('tax.view', handleGet)
+export const PUT = guarded('tax.manage', handlePut)
+export const DELETE = guarded('tax.manage', handleDelete)

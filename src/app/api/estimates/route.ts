@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { resolveTransactionCurrency } from '@/lib/currency/company'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -37,7 +38,7 @@ function mapEstimateLine(row: Record<string, unknown>) {
   }
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -143,3 +144,6 @@ export async function POST(request: Request) {
 }
 
 export { mapEstimate, mapEstimateLine }
+
+export const GET = guarded('invoices.view', handleGet)
+export const POST = guarded('invoices.edit', handlePost)

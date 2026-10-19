@@ -1,5 +1,8 @@
+import { guarded } from '@/lib/permissions/guard'
 import { handleCostCenterTypedImport } from '@/lib/cost-centers/import/api-handler'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   return handleCostCenterTypedImport(request, 'class')
 }
+
+export const POST = guarded('cost_centers.manage', handlePost)

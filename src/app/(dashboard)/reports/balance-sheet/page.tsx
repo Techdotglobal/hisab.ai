@@ -2,21 +2,25 @@
 
 import { useState } from 'react'
 import { useCompanyCurrency, useFormatCurrency } from '@/hooks/use-company-currency'
+import { DrilldownDrawer, DrillAmount, type DrilldownParams } from '@/components/reports/DrilldownDrawer'
 import { ReportActions } from '@/components/data-tools/report-actions'
 import type { ExportColumn } from '@/lib/export/table-export'
 
+interface BsItem { accountId?: string; accountNo: string; name: string; balance: number }
+
 interface BSData {
   asOf: string
-  assets: { items: { accountNo: string; name: string; balance: number }[]; total: number }
-  liabilities: { items: { accountNo: string; name: string; balance: number }[]; total: number }
-  equity: { items: { accountNo: string; name: string; balance: number }[]; total: number }
+  assets: { items: BsItem[]; total: number }
+  liabilities: { items: BsItem[]; total: number }
+  equity: { items: BsItem[]; total: number }
   totalLiabilitiesAndEquity: number
   isBalanced?: boolean
 }
 
-function Section({ title, items, total, color }: {
-  title: string; items: { accountNo: string; name: string; balance: number }[]
+function Section({ title, items, total, color, onAccount, onTotal }: {
+  title: string; items: BsItem[]
   total: number; color: string
+  onAccount: (item: BsItem) => void; onTotal: () => void
 }) {
   const formatCurrency = useFormatCurrency()
   return (
@@ -24,15 +28,15 @@ function Section({ title, items, total, color }: {
       <h3 className={`text-sm font-bold uppercase tracking-wide px-5 py-2.5 ${color}`}>{title}</h3>
       {items.map((item) => (
         item.balance !== 0 && (
-          <div key={item.accountNo} className="flex justify-between px-5 py-2 border-b text-sm hover:bg-gray-50">
+          <div key={item.accountId ?? item.accountNo} className="flex justify-between px-5 py-2 border-b text-sm hover:bg-gray-50">
             <span className="text-gray-600">{item.name}</span>
-            <span className="font-medium text-gray-800">{formatCurrency(item.balance)}</span>
+            <span className="font-medium text-gray-800">{item.accountId ? <DrillAmount label={item.name} onClick={() => onAccount(item)}>{formatCurrency(item.balance)}</DrillAmount> : formatCurrency(item.balance)}</span>
           </div>
         )
       ))}
       <div className="flex justify-between px-5 py-2.5 bg-gray-50 font-semibold text-sm">
         <span>Total {title}</span>
-        <span>{formatCurrency(total)}</span>
+        <span><DrillAmount label={`Total ${title}`} onClick={onTotal}>{formatCurrency(total)}</DrillAmount></span>
       </div>
     </div>
   )
@@ -44,6 +48,10 @@ export default function BalanceSheetPage() {
   const [asOf, setAsOf] = useState(new Date().toISOString().split('T')[0])
   const [data, setData] = useState<BSData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [drill, setDrill] = useState<DrilldownParams | null>(null)
+  const reportDate = data ? data.asOf.slice(0, 10) : asOf
+  const openAccount = (item: BsItem) =>
+    setDrill(item.accountId === 'current-period-earnings' ? { metric: 'bs.earnings', asOf: reportDate } : { metric: 'account', accountId: item.accountId, asOf: reportDate })
 
   async function load() {
     setLoading(true)
@@ -93,7 +101,7 @@ export default function BalanceSheetPage() {
             <div className="px-5 py-3 border-b bg-blue-600">
               <h2 className="text-white font-bold text-base">ASSETS</h2>
             </div>
-            <Section title="Assets" items={data.assets.items} total={data.assets.total} color="bg-blue-50 text-blue-700" />
+            <Section title="Assets" items={data.assets.items} total={data.assets.total} color="bg-blue-50 text-blue-700" onAccount={openAccount} onTotal={() => setDrill({ metric: 'bs.assets', asOf: reportDate })} />
             <div className="flex justify-between px-5 py-3 bg-blue-600 text-white font-bold">
               <span>TOTAL ASSETS</span>
               <span>{formatCurrency(data.assets.total)}</span>
@@ -105,8 +113,8 @@ export default function BalanceSheetPage() {
             <div className="px-5 py-3 border-b bg-orange-600">
               <h2 className="text-white font-bold text-base">LIABILITIES & EQUITY</h2>
             </div>
-            <Section title="Liabilities" items={data.liabilities.items} total={data.liabilities.total} color="bg-orange-50 text-orange-700" />
-            <Section title="Equity" items={data.equity.items} total={data.equity.total} color="bg-purple-50 text-purple-700" />
+            <Section title="Liabilities" items={data.liabilities.items} total={data.liabilities.total} color="bg-orange-50 text-orange-700" onAccount={openAccount} onTotal={() => setDrill({ metric: 'bs.liabilities', asOf: reportDate })} />
+            <Section title="Equity" items={data.equity.items} total={data.equity.total} color="bg-purple-50 text-purple-700" onAccount={openAccount} onTotal={() => setDrill({ metric: 'bs.equity', asOf: reportDate })} />
             <div className="flex justify-between px-5 py-3 bg-orange-600 text-white font-bold">
               <span>TOTAL LIABILITIES & EQUITY</span>
               <span>{formatCurrency(data.totalLiabilitiesAndEquity)}</span>
@@ -114,6 +122,8 @@ export default function BalanceSheetPage() {
           </div>
         </div>
       )}
+
+      <DrilldownDrawer params={drill} onClose={() => setDrill(null)} />
 
       {!data && !loading && (
         <div className="flex items-center justify-center h-48 text-gray-400 text-sm">

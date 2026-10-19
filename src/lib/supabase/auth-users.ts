@@ -268,11 +268,12 @@ export async function updateAppUser(
   // from it would silently mis-map on every update that doesn't explicitly pass a role.
   const { data: currentMembership, error: membershipFetchError } = await admin
     .from('company_users')
-    .select('role')
+    .select('role, is_active')
     .eq('company_id', companyId)
     .eq('user_id', userId)
     .maybeSingle()
   if (membershipFetchError) throw membershipFetchError
+  if (!currentMembership) throw new TenantAccessError('User is not a member of this company')
   const currentRole = (currentMembership?.role as CompanyRole | undefined) ?? 'ACCOUNTANT'
 
   if (input.role === 'OWNER' || input.role === 'SUPER_ADMIN') {
@@ -301,7 +302,8 @@ export async function updateAppUser(
     email: authUser.user.email,
     name: input.name ?? authUser.user.user_metadata?.full_name ?? null,
     role: nextRole,
-    isActive: input.isActive ?? true,
+    // Omitted isActive means "unchanged" — previously this silently re-activated deactivated users.
+    isActive: input.isActive ?? Boolean(currentMembership.is_active ?? true),
     companyId,
   })
 

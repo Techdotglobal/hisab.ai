@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { authzErrorResponse } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -6,7 +7,7 @@ import { generateWebhookSecret, hashSecret } from '@/lib/platform/webhooks/deliv
 import { requirePlatformAdmin } from '@/lib/platform/require-admin'
 import { isSafeWebhookUrl } from '@/lib/security/ssrf'
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const companyId = await resolveCompanyId()
@@ -30,7 +31,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requirePlatformAdmin()
     const companyId = await resolveCompanyId()
@@ -64,3 +65,6 @@ export async function POST(request: Request) {
     return authzErrorResponse(error)
   }
 }
+
+export const GET = guarded('integrations.manage', handleGet)
+export const POST = guarded('integrations.manage', handlePost)

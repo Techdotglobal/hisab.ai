@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import {
   deleteCompanyLogoFile,
@@ -9,7 +10,7 @@ import {
 import { stripLogoCacheBuster } from '@/lib/branding/logo-url'
 import { getSettingsRepository } from '@/lib/db/provider'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await requireAuth()
     const formData = await request.formData()
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+async function handleDelete() {
   try {
     await requireAuth()
     const settingsRepo = getSettingsRepository()
@@ -95,3 +96,6 @@ export async function DELETE() {
     return Response.json({ error: 'Failed to remove logo' }, { status: 500 })
   }
 }
+
+export const POST = guarded('settings.manage', handlePost)
+export const DELETE = guarded('settings.manage', handleDelete)

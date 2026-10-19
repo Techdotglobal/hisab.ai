@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import {
   deleteImportHistory,
@@ -6,7 +7,7 @@ import {
 import { apiError } from '@/lib/import-export/api-helpers'
 import { FrameworkNotFoundError } from '@/lib/import-export/errors'
 
-export async function GET(
+async function handleGet(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -23,7 +24,7 @@ export async function GET(
   }
 }
 
-export async function DELETE(
+async function handleDelete(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -39,3 +40,6 @@ export async function DELETE(
     return apiError(error)
   }
 }
+
+export const GET = guarded('imports.view', handleGet)
+export const DELETE = guarded('imports.run', handleDelete)

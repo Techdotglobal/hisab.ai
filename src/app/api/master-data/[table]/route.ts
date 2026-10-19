@@ -1,9 +1,10 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { listMasterRecords, createMasterRecord } from '@/lib/master-data/repository'
 
 const VALID_TABLES = new Set(['units_of_measure', 'warehouses', 'payment_terms', 'departments', 'company_currencies'])
 
-export async function GET(_req: Request, { params }: { params: Promise<{ table: string }> }) {
+async function handleGet(_req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
     await requireAuth()
     const { table } = await params
@@ -20,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ table: 
   }
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ table: string }> }) {
+async function handlePost(request: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
     await requireAuth()
     const { table } = await params
@@ -37,3 +38,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tab
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('dashboard.view', handleGet)
+export const POST = guarded(['settings.manage', 'inventory.edit', 'cost_centers.manage'], handlePost)

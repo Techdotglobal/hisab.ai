@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { COMPANY_COOKIE } from '@/lib/tenant'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 
-export async function GET() {
+async function handleGet() {
   try {
     const supabase = await createClient()
     const { data, error } = await supabase.auth.getUser()
@@ -47,7 +48,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     const supabase = await createClient()
     const { data, error } = await supabase.auth.getUser()
@@ -87,3 +88,6 @@ export async function POST(request: Request) {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('dashboard.view', handleGet)
+export const POST = guarded('settings.manage', handlePost)

@@ -1,10 +1,11 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireAuth } from '@/lib/auth'
 import { authzErrorResponse } from '@/lib/authz'
 import { processJobBatch } from '@/lib/platform/jobs/workers'
 import { getQueueStats } from '@/lib/platform/jobs/queue'
 import { isCronAuthorized, requirePlatformAdmin } from '@/lib/platform/require-admin'
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     if (!isCronAuthorized(request)) {
       await requirePlatformAdmin()
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+async function handleGet() {
   try {
     await requireAuth()
     const stats = await getQueueStats()
@@ -29,3 +30,6 @@ export async function GET() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const GET = guarded('platform.manage', handleGet)
+export const POST = guarded('platform.manage', handlePost)

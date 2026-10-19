@@ -1,3 +1,4 @@
+import { guarded } from '@/lib/permissions/guard'
 import { requireZatcaAdmin } from '@/lib/zatca/authz'
 import { ZatcaForbiddenError } from '@/lib/zatca/authz'
 import { runAllSandboxScenarios } from '@/lib/zatca/testing/sandbox-runner'
@@ -6,7 +7,7 @@ import { runAllSandboxScenarios } from '@/lib/zatca/testing/sandbox-runner'
  * POST /api/zatca/sandbox/run
  * Runs all sandbox E2E test scenarios (mock mode). Development / admin only.
  */
-export async function POST() {
+async function handlePost() {
   try {
     await requireZatcaAdmin()
 
@@ -30,3 +31,5 @@ export async function POST() {
     return Response.json({ error: String(error) }, { status: 500 })
   }
 }
+
+export const POST = guarded('integrations.manage', handlePost)
