@@ -66,8 +66,10 @@ import type {
   MigrationSessionState,
 } from '@/lib/import-export/wizard/migration-session'
 import { isWorkerOwnedQuickBooksMigration } from '@/lib/import-export/wizard/migration-session'
+import { isPollDue } from '@/lib/import-export/wizard/migration-poll-schedule'
 import { ConnectedSourceFlow } from './steps/ConnectedSourceFlow'
 
+/** Local tick; the real fetch cadence comes from migration-poll-schedule. */
 const POLL_INTERVAL_MS = 1_500
 /** Releases a navigation latch whose transition never committed, so retries stay possible. */
 const NAVIGATION_LATCH_MS = 5_000
@@ -554,10 +556,22 @@ export function MigrationSessionProvider({ children }: { children: ReactNode }) 
     restoreTimerRef.current = createMigrationRestoreTimer()
     restoreTimerRef.current.mark('route_mount')
     let timer: number | null = null
+    let lastPollAt = Date.now()
     // Interval starts only after the first hydrate so restore is not racing a second poll.
     void refresh().then(() => {
       if (!mountedRef.current) return
+      lastPollAt = Date.now()
+      // The tick is a cheap local check; the network is only hit when the cadence says it is due
+      // (fast while a migration runs in a visible tab, slow when idle, paused in hidden tabs).
       timer = window.setInterval(() => {
+        const now = Date.now()
+        if (!isPollDue({
+          sessionState: sessionRef.current?.config.state,
+          hidden: document.visibilityState === 'hidden',
+          now,
+          lastPollAt,
+        })) return
+        lastPollAt = now
         void refresh().catch(() => undefined)
         // A failed cycle is retried once per poll tick, never in a tight loop.
         if (coordinationFailedRef.current) setCoordinationAttempt((attempt) => attempt + 1)
@@ -575,8 +589,16 @@ export function MigrationSessionProvider({ children }: { children: ReactNode }) 
       void refresh({ deferActivity: false }).catch(() => undefined)
     }
     window.addEventListener('quickbooks-migration-session-changed', handleSessionChanged)
+    // A tab returning to the foreground catches up immediately instead of waiting for the next due tick.
+    const handleVisible = () => {
+      if (document.visibilityState !== 'visible' || timer === null) return
+      lastPollAt = Date.now()
+      void refresh().catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', handleVisible)
     return () => {
       mountedRef.current = false
+      document.removeEventListener('visibilitychange', handleVisible)
       if (timer !== null) window.clearInterval(timer)
       releaseNavigationLatch()
       refreshControllerRef.current?.abort()

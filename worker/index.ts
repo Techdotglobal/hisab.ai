@@ -1,7 +1,11 @@
 import { processJobBatch } from '@/lib/platform/jobs/workers'
 import { assertImportJobSchemaCompatibility } from '@/lib/platform/schema-compatibility'
+import { idlePollDelay } from '@/lib/platform/worker-backoff'
 
 const pollIntervalMs = Math.max(250, Number(process.env.IMPORT_WORKER_POLL_MS ?? 2000))
+const idleMaxMs = Math.max(pollIntervalMs, Number(process.env.IMPORT_WORKER_IDLE_MAX_MS ?? 15_000))
+/** A fatal start-up error (e.g. database restricted) waits before exiting so the supervisor's restart loop is slow. */
+const fatalExitDelayMs = Math.max(0, Number(process.env.WORKER_FATAL_EXIT_DELAY_MS ?? 60_000))
 let stopping = false
 
 function sleep(milliseconds: number): Promise<void> {
@@ -42,9 +46,16 @@ async function run() {
   const recoveryTimer = setInterval(() => { recoverOrphanedContinuations().catch(logRecoveryFailure) }, recoveryInterval)
 
   try {
+    // Idle polling backs off (2s -> IMPORT_WORKER_IDLE_MAX_MS) and snaps back as soon as work appears.
+    let idleStreak = 0
     while (!stopping) {
       const result = await processJobBatch(1, ['QUICKBOOKS_IMPORT_STEP', 'QUICKBOOKS_SNAPSHOT_STEP'])
-      if (result.processed === 0) await sleep(pollIntervalMs)
+      if (result.processed === 0) {
+        idleStreak += 1
+        await sleep(idlePollDelay(pollIntervalMs, idleStreak, idleMaxMs))
+      } else {
+        idleStreak = 0
+      }
     }
   } finally {
     clearInterval(hbTimer)
@@ -54,10 +65,14 @@ async function run() {
   console.log(JSON.stringify({ event: 'quickbooks_worker_stopped' }))
 }
 
-run().catch((error) => {
+run().catch(async (error) => {
   console.error(JSON.stringify({
     event: 'quickbooks_worker_fatal',
     message: error instanceof Error ? error.message : String(error),
   }))
   process.exitCode = 1
+  if (!stopping && fatalExitDelayMs > 0) {
+    console.error(JSON.stringify({ event: 'quickbooks_worker_fatal_backoff', delayMs: fatalExitDelayMs }))
+    await sleep(fatalExitDelayMs)
+  }
 })

@@ -25,7 +25,7 @@ test('MigrationSessionProvider is the only migration polling owner', () => {
 
   assert.equal(provider.match(/window\.setInterval\(/g)?.length, 1)
   assert.match(provider, /POLL_INTERVAL_MS = 1_500/)
-  assert.match(provider, /timer = window\.setInterval\(\(\) => \{\n {8}void refresh\(\)/)
+  assert.match(provider, /timer = window\.setInterval\(\(\) => \{[\s\S]*?isPollDue\(\{[\s\S]*?void refresh\(\)/)
 
   for (const child of children) {
     assert.doesNotMatch(child, /setInterval\(/)

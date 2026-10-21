@@ -105,8 +105,10 @@ test('HTTP import still resolves the tenant from cookies at the request boundary
   const tenant = read('src/lib/tenant.ts')
   const server = read('src/lib/supabase/server.ts')
   const route = read('src/app/api/import-export/[module]/import/route.ts')
+  // POST is wrapped by guarded('imports.run', handlePost); handlePost holds the request-boundary logic.
+  assert.match(route, /export const POST = guarded\('imports\.run', handlePost\)/)
   const postHandler = route.slice(
-    route.indexOf('export async function POST'),
+    route.indexOf('async function handlePost'),
     route.indexOf('export async function runImportJobStep'),
   )
 
