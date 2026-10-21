@@ -122,7 +122,11 @@ const ACCOUNTANT_PERMS: PermissionKey[] = [
   'tax.view', 'tax.manage', 'cost_centers.view', 'cost_centers.manage', 'budgets.view', 'budgets.manage',
   'fixed_assets.view', 'fixed_assets.manage', 'employees.view', 'payroll.view',
   'imports.run', 'imports.view', 'settings.view', 'workflows.manage', 'platform.manage', 'roles.view',
+  // Accountants see and manage users below them (Manager/Employee/Auditor); see authorityOf().
+  'users.view', 'users.create', 'users.edit', 'users.deactivate', 'users.view_permissions', 'roles.assign',
 ]
+
+const USER_ADMIN_PERMS: PermissionKey[] = ['users.view', 'users.create', 'users.edit', 'users.deactivate', 'users.view_permissions', 'roles.assign']
 
 const VIEW_ONLY_PERMS: PermissionKey[] = ALL_PERMISSIONS.filter(
   (k) => k.endsWith('.view') && !ACCESS_ADMIN_PERMISSIONS.includes(k) && k !== 'payroll.view' && k !== 'employees.view',
@@ -141,7 +145,7 @@ export const ROLE_BASELINES: Record<CompanyRole, PermissionKey[]> = {
   ADMIN: ALL_PERMISSIONS.filter((k) => !NON_REDELEGABLE.includes(k)),
   ACCOUNTANT: ACCOUNTANT_PERMS,
   MANAGER: ACCOUNTANT_PERMS.filter(
-    (k) => !['journals.post', 'fiscal_periods.manage', 'accounts.manage', 'tax.manage', 'platform.manage'].includes(k),
+    (k) => !['journals.post', 'fiscal_periods.manage', 'accounts.manage', 'tax.manage', 'platform.manage', ...USER_ADMIN_PERMS].includes(k),
   ),
   EMPLOYEE: ['dashboard.view', 'expenses.view', 'expenses.edit'],
   AUDITOR: [...VIEW_ONLY_PERMS, 'ledger.view', 'reports.export', 'audit_logs.view'],

@@ -71,6 +71,10 @@ export function authorityOf(actor: Principal): Authority {
   } else if (actor.role === 'ADMIN') {
     manageable = NON_OWNER_ROLES
     delegable = []
+  } else if (actor.role === 'ACCOUNTANT') {
+    // Accountants manage users below them only; never peers or admins.
+    manageable = ['MANAGER', 'EMPLOYEE', 'AUDITOR']
+    delegable = []
   } else {
     manageable = []
     delegable = []

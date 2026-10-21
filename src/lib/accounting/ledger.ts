@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import type { CanonicalAccountType, LedgerEntryRecord, LedgerSourceType, NormalBalance } from './types'
 import { signedBalance } from './normal-balance'
+import { ledgerRangeBounds, round4, sumDebitCredit, withRunningBalance } from './ledger-report-math'
 
 function mapLedgerRow(row: Record<string, unknown>): LedgerEntryRecord {
   return {
@@ -104,54 +105,88 @@ export async function aggregateLedgerBalances(options: {
   })
 }
 
+const AGGREGATE_CHUNK = 1000
+
 export async function getGeneralLedgerReport(options: {
   accountId?: string
-  from: Date
-  to: Date
+  from: Date | string
+  to: Date | string
   companyId?: string
   limit?: number
   offset?: number
+  /** Restrict to one or more ledger source types ("class of transaction"). */
+  sourceTypes?: string[]
+  /** Skip opening balance / whole-period totals (cheaper; used by paged export after the first page). */
+  skipAggregates?: boolean
 }) {
   const companyId = options.companyId ?? await resolveCompanyId()
   const client = createAdminClient()
+  const { fromIso, toIso } = ledgerRangeBounds(options.from, options.to)
+  const sourceTypes = options.sourceTypes?.length ? options.sourceTypes : undefined
 
-  let query = client
-    .from('ledger_entries')
-    .select(`
+  // Every query shares the same account / class scope so balances, totals and rows agree.
+  const scoped = (select: string, opts?: { count?: 'exact' }) => {
+    let q = client.from('ledger_entries').select(select, opts).eq('company_id', companyId)
+    if (options.accountId) q = q.eq('account_id', options.accountId)
+    if (sourceTypes) q = q.in('source_type', sourceTypes)
+    return q
+  }
+  const ordered = <T extends { order: (c: string, o: { ascending: boolean }) => T }>(q: T) =>
+    q.order('entry_date', { ascending: true }).order('posting_sequence', { ascending: true })
+
+  const pageSize = options.limit ?? 500
+  const offset = options.offset ?? 0
+
+  const { data, error, count } = await ordered(
+    scoped(`
       *,
       account:chart_of_accounts!ledger_entries_account_id_fkey(account_no, name, account_type, canonical_type, normal_balance),
       cost_center:cost_centers(name,type)
-    `, { count: 'exact' })
-    .eq('company_id', companyId)
-    .gte('entry_date', options.from.toISOString())
-    .lte('entry_date', options.to.toISOString())
-    .order('entry_date', { ascending: true })
-    .order('posting_sequence', { ascending: true })
-
-  if (options.accountId) query = query.eq('account_id', options.accountId)
-  const pageSize = options.limit ?? 500
-  const offset = options.offset ?? 0
-  query = query.range(offset, offset + pageSize - 1)
-
-  const { data, error, count } = await query
+    `, { count: 'exact' }).gte('entry_date', fromIso).lte('entry_date', toIso),
+  ).range(offset, offset + pageSize - 1)
   if (error) throw error
 
-  let runningBalance = 0
-  const entries = (data ?? []).map((row) => {
-    const debit = Number(row.debit ?? 0)
-    const credit = Number(row.credit ?? 0)
-    runningBalance += debit - credit
+  // PostgREST caps responses (1000 rows), so aggregates are accumulated chunk by chunk.
+  async function scan(build: () => ReturnType<typeof scoped>, upTo = Infinity) {
+    let debit = 0
+    let credit = 0
+    for (let from = 0; from < upTo; from += AGGREGATE_CHUNK) {
+      const take = Math.min(AGGREGATE_CHUNK, upTo - from)
+      const { data: rows, error: scanError } = await ordered(build()).range(from, from + take - 1)
+      if (scanError) throw scanError
+      const list = (rows ?? []) as unknown as { debit: number | string; credit: number | string }[]
+      for (const r of list) { debit += Number(r.debit ?? 0); credit += Number(r.credit ?? 0) }
+      if (list.length < take) break
+    }
+    return { debit: round4(debit), credit: round4(credit) }
+  }
+  const inPeriod = () => scoped('debit, credit').gte('entry_date', fromIso).lte('entry_date', toIso)
+
+  let opening = 0
+  let totals = sumDebitCredit([])
+  let priorNet = 0
+  if (!options.skipAggregates) {
+    const before = await scan(() => scoped('debit, credit').lt('entry_date', fromIso))
+    opening = round4(before.debit - before.credit)
+    totals = await scan(inPeriod)
+    if (offset > 0) {
+      const prior = await scan(inPeriod, offset)
+      priorNet = round4(prior.debit - prior.credit)
+    }
+  }
+
+  const mapped = ((data ?? []) as unknown as Record<string, unknown>[]).map((row) => {
     const account = row.account as Record<string, unknown> | null
     const costCenter = row.cost_center as Record<string, unknown> | null
     return {
       date: row.entry_date,
       entryNo: row.journal_entry_id,
       description: row.description,
-      debit,
-      credit,
-      balance: runningBalance,
+      debit: Number(row.debit ?? 0),
+      credit: Number(row.credit ?? 0),
       sourceType: row.source_type,
       sourceId: row.source_id,
+      accountId: row.account_id,
       account: account
         ? {
             accountNo: account.account_no,
@@ -162,14 +197,14 @@ export async function getGeneralLedgerReport(options: {
       costCenter: costCenter ? { name: costCenter.name, type: costCenter.type } : null,
     }
   })
-
-  const totalDebit = entries.reduce((s, e) => s + e.debit, 0)
-  const totalCredit = entries.reduce((s, e) => s + e.credit, 0)
+  const entries = withRunningBalance(mapped, round4(opening + priorNet))
 
   return {
-    period: { from: options.from.toISOString(), to: options.to.toISOString() },
+    period: { from: fromIso, to: toIso },
     entries,
-    totals: { debit: totalDebit, credit: totalCredit, balance: totalDebit - totalCredit },
+    openingBalance: opening,
+    closingBalance: round4(opening + totals.debit - totals.credit),
+    totals: { debit: totals.debit, credit: totals.credit, balance: round4(totals.debit - totals.credit) },
     pagination: { total: count ?? entries.length, limit: pageSize, offset },
   }
 }

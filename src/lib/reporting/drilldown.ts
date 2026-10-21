@@ -3,6 +3,7 @@ import { aggregateLedgerBalances } from '@/lib/accounting/ledger'
 import { ledgerRangeBounds } from '@/lib/accounting/ledger-report-math'
 import type { CanonicalAccountType, NormalBalance } from '@/lib/accounting/types'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sourceHref } from './source-links'
 import {
   METRICS,
   buildExplanation,
@@ -97,11 +98,6 @@ interface RawEntry {
   account: { account_no: string; name: string; full_name: string | null; canonical_type: string; normal_balance: string; sub_type: string | null; deleted_at: string | null } | null
 }
 
-const SOURCE_HREF: Record<string, (id: string) => string> = {
-  INVOICE: (id) => `/invoices/${id}`,
-  BILL: (id) => `/bills/${id}`,
-  EXPENSE: (id) => `/expenses/${id}`,
-}
 
 export function metricDefinition(key: MetricKey, canonicalType?: CanonicalAccountType): MetricDef {
   if (key !== 'account') return METRICS[key]
@@ -295,7 +291,7 @@ export async function buildDrilldown(req: DrilldownRequest): Promise<DrilldownRe
       amountIncluded: contributions[offset + i],
       journalEntryId: e.journal_entry_id,
       journalNo: journal?.entryNo ?? null,
-      href: e.source_id && SOURCE_HREF[e.source_type] ? SOURCE_HREF[e.source_type](e.source_id) : null,
+      href: sourceHref(e.source_type, e.source_id),
     }
   })
   return { ...base, rows, detailRestricted: false }

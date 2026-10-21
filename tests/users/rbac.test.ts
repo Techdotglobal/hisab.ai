@@ -204,7 +204,8 @@ describe('Users page shows real company members and the Create User action', () 
   })
 
   it('Create/Edit role options never include Owner or Super Admin', () => {
-    assert.match(page, /const ROLES = \['ADMIN', 'ACCOUNTANT', 'VIEWER'\]/)
+    assert.match(page, /const ALL_ROLES = \['ADMIN', 'ACCOUNTANT', 'MANAGER', 'EMPLOYEE', 'VIEWER'\]/)
+    assert.doesNotMatch(page, /const ALL_ROLES = \[[^\]]*(OWNER|SUPER_ADMIN)/)
   })
 
   it('does not show a separate pending-invitation list mixed into the member table', () => {
@@ -215,10 +216,7 @@ describe('Users page shows real company members and the Create User action', () 
     // Regression: u.role for the Owner's row is the display value 'SUPER_ADMIN' (publicRole('OWNER')).
     // openEdit seeds form.role from it, so a naive save would send role: 'SUPER_ADMIN' and the Owner
     // could never rename themselves. The body must omit role whenever the row being edited is the Owner.
-    assert.match(
-      page,
-      /const body = editing\s*\n\s*\? \(editing\.role === 'SUPER_ADMIN' \? \{ name: form\.name \} : \{ name: form\.name, role: form\.role \}\)\s*\n\s*: form/,
-    )
+    assert.match(page, /editing\.role !== 'SUPER_ADMIN' && can\('roles\.assign'\) && form\.role !== editing\.role \? \{ role: form\.role \}/)
   })
 
   it('the role selector is hidden when editing the Owner, instead of showing a value not in its own option list', () => {

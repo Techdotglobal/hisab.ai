@@ -208,9 +208,12 @@ describe('delegation scenarios', () => {
     denied(() => assertCanEditUser(limited, accountant), 'role_not_manageable')
     assertCanEditUser(limited, employee)
   })
-  it('an accountant has no access administration', () => {
+  it('an accountant manages users below them but cannot grant permissions or touch peers/admins', () => {
     const a = principal('acc', 'ACCOUNTANT')
-    denied(() => assertCanCreateUser(a, 'EMPLOYEE'), 'missing_capability')
+    assertCanCreateUser(a, 'EMPLOYEE')
+    assertCanCreateUser(a, 'MANAGER')
+    denied(() => assertCanCreateUser(a, 'ADMIN'), 'role_not_manageable')
+    denied(() => assertCanCreateUser(a, 'ACCOUNTANT'), 'role_not_manageable')
     denied(() => assertCanChangeGrant(a, employee, 'ledger.view'), 'missing_capability')
   })
 })
