@@ -55,8 +55,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS access_delegations_active_uq
 ALTER TABLE public.user_permission_grants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.access_delegations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS user_permission_grants_service_all ON public.user_permission_grants;
 CREATE POLICY user_permission_grants_service_all ON public.user_permission_grants
   FOR ALL TO service_role USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS access_delegations_service_all ON public.access_delegations;
 CREATE POLICY access_delegations_service_all ON public.access_delegations
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
@@ -66,6 +68,8 @@ CREATE POLICY access_delegations_service_all ON public.access_delegations
 -- roles that may review the log; writes are service-role only (the server writes audit rows).
 -- ---------------------------------------------------------------------------------------------
 DROP POLICY IF EXISTS audit_logs_tenant ON public.audit_logs;
+DROP POLICY IF EXISTS audit_logs_select_reviewers ON public.audit_logs;
+DROP POLICY IF EXISTS audit_logs_service_all ON public.audit_logs;
 
 CREATE POLICY audit_logs_select_reviewers ON public.audit_logs
   FOR SELECT TO authenticated
