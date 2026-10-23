@@ -2,6 +2,7 @@ import 'server-only'
 import { requireAuth } from '@/lib/auth'
 import { ForbiddenError } from '@/lib/authz'
 import type { CompanyRole } from '@/lib/db/types'
+import { memoPerRequest } from '@/lib/request-memo'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCompanyId } from '@/lib/tenant'
 import {
@@ -107,6 +108,15 @@ export async function loadAccessSnapshot(userId: string, companyId: string): Pro
   }
 }
 
+/**
+ * The caller's own snapshot, shared across the permission checks of one request (the route guard plus any
+ * `requirePermission` in the handler). Target users are always read fresh through `loadAccessSnapshot`,
+ * so a handler that edits someone's access never sees its own stale read.
+ */
+function loadCallerSnapshot(userId: string, companyId: string): Promise<AccessSnapshot | null> {
+  return memoPerRequest(`access.caller:${companyId}:${userId}`, () => loadAccessSnapshot(userId, companyId))
+}
+
 export function toPrincipal(snapshot: AccessSnapshot): Principal {
   return { userId: snapshot.userId, role: snapshot.role, access: snapshot.access, delegation: snapshot.delegation }
 }
@@ -135,7 +145,7 @@ export interface AuthorizedContext {
 export async function requirePermission(...required: PermissionKey[]): Promise<AuthorizedContext> {
   const user = await requireAuth()
   const companyId = await resolveCompanyId()
-  const snapshot = await loadAccessSnapshot(user.id, companyId)
+  const snapshot = await loadCallerSnapshot(user.id, companyId)
   if (!snapshot || !snapshot.isActive) throw new ForbiddenError()
   for (const permission of required) {
     if (!hasPermission(snapshot.access, permission)) throw new ForbiddenError()
@@ -155,7 +165,7 @@ export async function requirePermission(...required: PermissionKey[]): Promise<A
 export async function requireAnyPermission(...anyOf: PermissionKey[]): Promise<AuthorizedContext> {
   const user = await requireAuth()
   const companyId = await resolveCompanyId()
-  const snapshot = await loadAccessSnapshot(user.id, companyId)
+  const snapshot = await loadCallerSnapshot(user.id, companyId)
   if (!snapshot || !snapshot.isActive || !anyOf.some((p) => hasPermission(snapshot.access, p))) throw new ForbiddenError()
   return {
     id: user.id,

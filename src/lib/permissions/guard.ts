@@ -1,5 +1,6 @@
 import 'server-only'
 import { ForbiddenError } from '@/lib/authz'
+import { runWithRequestMemo } from '@/lib/request-memo'
 import { TenantAccessError } from '@/lib/tenant-error'
 import type { PermissionKey } from './catalog'
 import { requirePermission, requireAnyPermission } from './server'
@@ -18,7 +19,7 @@ export function guarded<H extends (...args: never[]) => unknown>(
   permission: PermissionKey | PermissionKey[],
   handler: H,
 ): (...args: Parameters<H>) => Promise<Response> {
-  return async (...args: Parameters<H>) => {
+  return (...args: Parameters<H>) => runWithRequestMemo(async () => {
     try {
       if (Array.isArray(permission)) await requireAnyPermission(...permission)
       else await requirePermission(permission)
@@ -33,5 +34,5 @@ export function guarded<H extends (...args: never[]) => unknown>(
       return Response.json({ error: 'Authorization check failed' }, { status: 500 })
     }
     return (await handler(...args)) as Response
-  }
+  })
 }

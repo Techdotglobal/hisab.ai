@@ -133,6 +133,8 @@ interface CompanyOption {
   isActive: boolean
 }
 
+const NOTIFICATION_COUNT_TTL_MS = 5 * 60_000
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -149,12 +151,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const notificationRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
+  // The badge count is loaded once, then refreshed when the tab regains focus after NOTIFICATION_COUNT_TTL_MS —
+  // not on every route change, which used to add one API call per sidebar click.
   useEffect(() => {
-    fetch('/api/platform/notifications?count=true')
-      .then((r) => r.ok ? r.json() : { count: 0 })
-      .then((d) => setNotificationCount(d.count ?? 0))
-      .catch(() => {})
-  }, [pathname])
+    let lastLoadedAt = 0
+    function loadCount() {
+      lastLoadedAt = Date.now()
+      fetch('/api/platform/notifications?count=true')
+        .then((r) => r.ok ? r.json() : { count: 0 })
+        .then((d) => setNotificationCount(d.count ?? 0))
+        .catch(() => {})
+    }
+    function onVisible() {
+      if (document.visibilityState === 'visible' && Date.now() - lastLoadedAt >= NOTIFICATION_COUNT_TTL_MS) loadCount()
+    }
+    loadCount()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   useEffect(() => {
     if (!showNotifications) return

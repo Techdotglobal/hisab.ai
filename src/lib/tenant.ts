@@ -3,7 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { getAppUser } from '@/lib/supabase/auth-users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth'
+import { memoPerRequest } from '@/lib/request-memo'
 import { TenantAccessError } from '@/lib/tenant-error'
 import { AsyncLocalStorage } from 'node:async_hooks'
 
@@ -38,26 +39,26 @@ export async function resolveCompanyId(_client?: SupabaseClient): Promise<string
   void _client
   const background=backgroundTenantContext.getStore()
   if(background?.companyId)return background.companyId
-  const supabase = await createClient()
-  const { data, error } = await supabase.auth.getUser()
+  return memoPerRequest('tenant.companyId', async () => {
+    const authUser = await getAuthUser()
+    if (!authUser) {
+      throw new TenantAccessError('Authentication required')
+    }
 
-  if (error || !data.user?.email) {
-    throw new TenantAccessError('Authentication required')
-  }
+    const cookieStore = await cookies()
+    const cookieCompanyId = cookieStore.get(COMPANY_COOKIE)?.value
 
-  const cookieStore = await cookies()
-  const cookieCompanyId = cookieStore.get(COMPANY_COOKIE)?.value
+    if (cookieCompanyId) {
+      const allowed = await validateCompanyAccess(authUser.id, cookieCompanyId)
+      if (allowed) return cookieCompanyId
+    }
 
-  if (cookieCompanyId) {
-    const allowed = await validateCompanyAccess(data.user.id, cookieCompanyId)
-    if (allowed) return cookieCompanyId
-  }
-
-  const user = await getAppUser(data.user.id, data.user.email)
-  if (!user.companyId) {
-    throw new TenantAccessError()
-  }
-  return user.companyId
+    const user = await getAppUser(authUser.id, authUser.email)
+    if (!user.companyId) {
+      throw new TenantAccessError()
+    }
+    return user.companyId
+  })
 }
 
 /** Optional company id for background jobs that already know the tenant. */
