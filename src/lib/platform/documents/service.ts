@@ -13,7 +13,7 @@ export async function getDocumentWithDetails(documentId: string, companyId?: str
       category:document_categories(id, name),
       versions:document_versions(*),
       tags:document_tag_assignments(tag:document_tags(id, name, color)),
-      comments:document_comments(*, user:profiles(name)),
+      comments:document_comments(*, user:profiles(name:full_name)),
       ocr:document_ocr_metadata(*)
     `)
     .eq('id', documentId)

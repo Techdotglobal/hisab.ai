@@ -202,7 +202,7 @@ export async function runJournalReport(req: ReportRunRequest) {
 
   const { data, error } = await client
     .from('journal_entries')
-    .select('id, entry_no, date, description, status, total_debit, total_credit, created_by:profiles(name)')
+    .select('id, entry_no, date, description, status, total_debit, total_credit, created_by:profiles(name:full_name)')
     .eq('company_id', companyId)
     .gte('date', from.toISOString())
     .lte('date', to.toISOString())

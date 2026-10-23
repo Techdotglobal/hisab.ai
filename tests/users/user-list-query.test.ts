@@ -23,3 +23,12 @@ test('the Users page distinguishes a failed load from an empty directory', () =>
   assert.match(page, /setLoadFailed\(!usersRes\.ok && usersRes\.status !== 403\)/)
   assert.match(page, /loadFailed \? 'Users could not be loaded\.' : 'No users found\.'/)
 })
+
+// profiles has `full_name`, not `name`; a select of `profiles(name)` fails with 42703 and breaks the query.
+test('profile embeds read full_name (aliased to name), never a non-existent profiles.name column', () => {
+  for (const path of ['src/lib/platform/documents/service.ts', 'src/lib/reporting/providers/financial-extended.ts']) {
+    const source = read(path)
+    assert.doesNotMatch(source, /profiles\(name\)/, path)
+    assert.match(source, /profiles\(name:full_name\)/, path)
+  }
+})
