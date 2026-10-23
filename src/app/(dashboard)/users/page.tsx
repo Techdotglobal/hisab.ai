@@ -62,6 +62,7 @@ export default function UsersPage() {
   const can = (p: string) => Boolean(me?.permissions.includes(p))
   const [accessUserId, setAccessUserId] = useState<string | null>(null)
   const [denied, setDenied] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -72,7 +73,8 @@ export default function UsersPage() {
   async function load() {
     setLoading(true)
     const [usersRes, meRes] = await Promise.all([fetch('/api/users'), fetch('/api/auth/me')])
-    if (usersRes.status === 403) setDenied(true)
+    setDenied(usersRes.status === 403)
+    setLoadFailed(!usersRes.ok && usersRes.status !== 403)
     if (usersRes.ok) setUsers(await usersRes.json())
     if (meRes.ok) setMe(await meRes.json())
     setLoading(false)
@@ -192,6 +194,13 @@ export default function UsersPage() {
         </div>
       )}
 
+      {loadFailed && (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 flex items-center justify-between gap-3">
+          The user list could not be loaded. This is a server problem, not a missing permission.
+          <Button onClick={() => void load()}>Retry</Button>
+        </div>
+      )}
+
       {!denied && (
         <div className="flex flex-wrap items-end gap-3">
           <div className="relative w-64">
@@ -226,7 +235,7 @@ export default function UsersPage() {
               {loading ? Array.from({ length: 3 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 8 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="skeleton h-4 rounded" /></td>)}</tr>
               )) : users.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400 text-sm">No users found.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400 text-sm">{loadFailed ? 'Users could not be loaded.' : 'No users found.'}</td></tr>
               ) : visibleUsers.map(u => {
                 const canManage = (u.role !== 'SUPER_ADMIN' || isSuperAdmin) && (can('users.edit') || can('roles.assign'))
                 return (

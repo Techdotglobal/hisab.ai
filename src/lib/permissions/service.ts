@@ -3,7 +3,7 @@ import { extractClientIp } from '@/lib/accounting/posting-audit'
 import { logAudit } from '@/lib/audit/log'
 import type { CompanyRole } from '@/lib/db/types'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createAppUser, fromDisplayRole, publicRole, updateAppUser, deleteAppUser } from '@/lib/supabase/auth-users'
+import { createAppUser, fromDisplayRole, loadProfilesById, publicRole, updateAppUser, deleteAppUser } from '@/lib/supabase/auth-users'
 import {
   ROLE_BASELINES,
   hasPermission,
@@ -122,7 +122,7 @@ export async function listUsersWithAccess(companyId: string): Promise<UserAccess
   const [members, grants, delegations] = await Promise.all([
     admin
       .from('company_users')
-      .select('user_id, role, is_active, created_at, profiles(full_name, is_active)')
+      .select('user_id, role, is_active, created_at')
       .eq('company_id', companyId),
     admin.from('user_permission_grants').select('user_id, permission, scope').eq('company_id', companyId).is('revoked_at', null),
     admin.from('access_delegations').select('user_id').eq('company_id', companyId).is('revoked_at', null),
@@ -139,12 +139,15 @@ export async function listUsersWithAccess(companyId: string): Promise<UserAccess
     grantsByUser.set(String(g.user_id), list)
   }
   const delegates = new Set((delegations.data ?? []).map((d) => String(d.user_id)))
+  // company_users and profiles both reference auth.users, with no foreign key between them, so PostgREST
+  // cannot embed one in the other — load the profiles with a second query.
+  const profiles = await loadProfilesById(admin, (members.data ?? []).map((m) => String(m.user_id)))
 
   const rows = await Promise.all(
     (members.data ?? []).map(async (m) => {
       const id = String(m.user_id)
       const { data: auth } = await admin.auth.admin.getUserById(id)
-      const profile = m.profiles as unknown as { full_name?: string | null; is_active?: boolean | null } | null
+      const profile = profiles.get(id) ?? null
       const storedRole = m.role as CompanyRole
       const own = grantsByUser.get(id) ?? []
       const access = resolveEffectiveAccess(storedRole, own)

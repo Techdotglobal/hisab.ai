@@ -167,16 +167,36 @@ export async function getAppUser(userId: string, email: string): Promise<AppUser
   }
 }
 
+export interface ProfileSummary {
+  full_name?: string | null
+  avatar_url?: string | null
+  is_active?: boolean | null
+}
+
+/** Profiles keyed by user id. Loaded separately because company_users has no foreign key to profiles to embed through. */
+export async function loadProfilesById(
+  admin: ReturnType<typeof createAdminClient>,
+  userIds: string[],
+): Promise<Map<string, ProfileSummary>> {
+  const profiles = new Map<string, ProfileSummary>()
+  if (!userIds.length) return profiles
+  const { data, error } = await admin.from('profiles').select('id, full_name, avatar_url, is_active').in('id', userIds)
+  if (error) throw error
+  for (const row of data ?? []) profiles.set(String(row.id), row as ProfileSummary)
+  return profiles
+}
+
 export async function listAppUsers(companyId: string): Promise<(AppUser & { createdAt: string })[]> {
   const admin = createAdminClient()
 
   const { data, error } = await admin
     .from('company_users')
-    .select('user_id, role, is_active, created_at, profiles(full_name, avatar_url, is_active)')
+    .select('user_id, role, is_active, created_at')
     .eq('company_id', companyId)
     .order('created_at', { ascending: true })
 
   if (error) throw error
+  const profiles = await loadProfilesById(admin, (data ?? []).map((row) => String(row.user_id)))
 
   const { data: companyRow, error: companyError } = await admin
     .from('companies')
@@ -190,11 +210,7 @@ export async function listAppUsers(companyId: string): Promise<(AppUser & { crea
       const { data: authUser, error: authError } = await admin.auth.admin.getUserById(String(row.user_id))
       if (authError) throw authError
 
-      const profile = row.profiles as {
-        full_name?: string | null
-        avatar_url?: string | null
-        is_active?: boolean | null
-      } | null
+      const profile = profiles.get(String(row.user_id)) ?? null
       const userEmail = authUser.user.email ?? ''
 
       return {
